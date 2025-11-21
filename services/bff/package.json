@@ -1,0 +1,6 @@
+{
+  "name": "bff",
+  "version": "0.0.1",
+  "description": "Backend for Frontend - API Gateway Service",
+  "private": true
+}

@@ -1,0 +1,27 @@
+{
+  "name": "escrowly-backend",
+  "version": "1.0.0",
+  "description": "Escrowly Backend - Crypto Escrow, Wallet, and Ledger Platform",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:restart": "docker-compose restart",
+    "docker:clean": "docker-compose down -v",
+    "auth:dev": "cd services/auth && npm run start:dev",
+    "auth:test": "cd services/auth && npm run test",
+    "auth:test:watch": "cd services/auth && npm run test:watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

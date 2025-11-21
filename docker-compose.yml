@@ -1,0 +1,102 @@
+version: "3.9"
+
+services:
+  # NOTE: PostgreSQL removed - using AWS Aurora instead
+  # If you need local PostgreSQL for testing, uncomment below:
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: escrowly-postgres
+  #   environment:
+  #     POSTGRES_USER: escrowly_dev
+  #     POSTGRES_PASSWORD: escrowly_dev_password
+  #     POSTGRES_DB: escrowly
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ./scripts/init-schemas.sql:/docker-entrypoint-initdb.d/init-schemas.sql
+  #   networks:
+  #     - escrowly-network
+
+  # PgAdmin - GUI for database management (can connect to Aurora)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: escrowly-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@escrowly.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    networks:
+      - escrowly-network
+
+  # Redpanda - Kafka-compatible event streaming (lighter than Kafka for local dev)
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: escrowly-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --reserve-memory
+      - 0M
+      - --overprovisioned
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644" # Admin API
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - escrowly-network
+
+  # Redis - Caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: escrowly-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass escrowly_redis_password
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - escrowly-network
+
+  # Mailhog - Email testing (captures outgoing emails)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: escrowly-mailhog
+    ports:
+      - "1025:1025" # SMTP server
+      - "8025:8025" # Web UI
+    networks:
+      - escrowly-network
+
+volumes:
+  # postgres_data:  # Uncomment if using local PostgreSQL
+  #   driver: local
+  redpanda_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  escrowly-network:
+    driver: bridge
