@@ -1,0 +1,126 @@
+// Prisma schema for Admin Service
+// Uses admin_db schema in shared PostgreSQL instance
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated/prisma"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["admin_db"]
+}
+
+// ====================================
+// Admin Service Models
+// ====================================
+
+// Blog Category Model
+model BlogCategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(255)
+  slug      String   @unique @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  blogs     Blog[]
+
+  @@index([slug])
+  @@map("blog_categories")
+  @@schema("admin_db")
+}
+
+// Blog Model
+model Blog {
+  id            String    @id @default(uuid()) @db.Uuid
+  title         String    @db.VarChar(500)
+  slug          String    @unique @db.VarChar(500)
+  categoryId    Int       @map("category_id")
+  category      BlogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  imageUrl      String    @map("image_url") @db.Text
+  excerpt       String?   @db.Text
+  readTime      Int       @default(4) @map("read_time") // in minutes
+  isPublished   Boolean   @default(false) @map("is_published")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdBy     String?   @map("created_by") @db.VarChar(255)
+
+  // Content sections (stored as JSON for flexibility)
+  contentSections Json @map("content_sections") // Array of BlogContentSection
+
+  @@index([categoryId])
+  @@index([isPublished])
+  @@index([createdAt])
+  @@index([slug])
+  @@map("blogs")
+  @@schema("admin_db")
+}
+
+// Help Desk Category Model
+model HelpDeskCategory {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique @db.VarChar(255)
+  slug      String        @unique @db.VarChar(255)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  items     HelpDeskItem[]
+
+  @@index([slug])
+  @@map("help_desk_categories")
+  @@schema("admin_db")
+}
+
+// Help Desk Item Model
+model HelpDeskItem {
+  id          Int              @id @default(autoincrement())
+  title       String           @db.VarChar(255)
+  slug        String           @unique @db.VarChar(255)
+  categoryId  Int
+  imageUrl    String?          @db.Text
+  youtubeLink String?          @db.VarChar(500)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  category    HelpDeskCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  questions   HelpDeskQuestion[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@map("help_desk_items")
+  @@schema("admin_db")
+}
+
+// Help Desk Question Model
+model HelpDeskQuestion {
+  id          Int          @id @default(autoincrement())
+  question    String       @db.Text
+  answer      String       @db.Text
+  itemId      Int
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  item        HelpDeskItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@map("help_desk_questions")
+  @@schema("admin_db")
+}
+
+// Outbox pattern for event-driven architecture
+model Outbox {
+  id            String    @id @default(uuid()) @db.Uuid
+  aggregateId   String    @map("aggregate_id")
+  aggregateType String    @map("aggregate_type")
+  eventType     String    @map("event_type")
+  payload       Json
+  createdAt     DateTime  @default(now()) @map("created_at")
+  processedAt   DateTime? @map("processed_at")
+
+  @@index([processedAt])
+  @@map("outbox")
+  @@schema("admin_db")
+}
+

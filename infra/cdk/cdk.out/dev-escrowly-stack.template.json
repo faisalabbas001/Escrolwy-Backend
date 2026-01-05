@@ -1,0 +1,317 @@
+{
+ "Description": "Escrowly Dev Environment - Aurora, S3, KMS (Minimal Cost)",
+ "Resources": {
+  "devescrowlykmskey34A0C59F": {
+   "Type": "AWS::KMS::Key",
+   "Properties": {
+    "EnableKeyRotation": true,
+    "KeyPolicy": {
+     "Statement": [
+      {
+       "Action": "kms:*",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":iam::956926660360:root"
+          ]
+         ]
+        }
+       },
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/dev-escrowly-kms-key/Resource"
+   }
+  },
+  "devescrowlykmskeyAlias63595EFC": {
+   "Type": "AWS::KMS::Alias",
+   "Properties": {
+    "AliasName": "alias/dev-escrowly-kms-key",
+    "TargetKeyId": {
+     "Fn::GetAtt": [
+      "devescrowlykmskey34A0C59F",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/dev-escrowly-kms-key/Alias/Resource"
+   }
+  },
+  "devescrowlyappsecretsD1AE2D29": {
+   "Type": "AWS::SecretsManager::Secret",
+   "Properties": {
+    "GenerateSecretString": {
+     "GenerateStringKey": "APP_SECRET",
+     "SecretStringTemplate": "{\"JWT_SECRET\":\"change-me-in-prod\"}"
+    },
+    "Name": "dev-escrowly-app-secrets"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/dev-escrowly-app-secrets/Resource"
+   }
+  },
+  "devescrowlyfilesD7D0FC74": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "KMSMasterKeyID": {
+         "Fn::GetAtt": [
+          "devescrowlykmskey34A0C59F",
+          "Arn"
+         ]
+        },
+        "SSEAlgorithm": "aws:kms"
+       }
+      }
+     ]
+    },
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-objects",
+      "Value": "true"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/dev-escrowly-files/Resource"
+   }
+  },
+  "devescrowlyfilesPolicy96D92DC5": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "devescrowlyfilesD7D0FC74"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:PutBucketPolicy",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::GetAtt": [
+          "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+          "Arn"
+         ]
+        }
+       },
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "devescrowlyfilesD7D0FC74",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "devescrowlyfilesD7D0FC74",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/dev-escrowly-files/Policy/Resource"
+   }
+  },
+  "devescrowlyfilesAutoDeleteObjectsCustomResource0B2671FC": {
+   "Type": "Custom::S3AutoDeleteObjects",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "devescrowlyfilesD7D0FC74"
+    }
+   },
+   "DependsOn": [
+    "devescrowlyfilesPolicy96D92DC5"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/dev-escrowly-files/AutoDeleteObjectsCustomResource/Default"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-956926660360-us-west-2",
+     "S3Key": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs22.x",
+    "Description": {
+     "Fn::Join": [
+      "",
+      [
+       "Lambda function for auto-deleting objects in ",
+       {
+        "Ref": "devescrowlyfilesD7D0FC74"
+       },
+       " S3 bucket."
+      ]
+     ]
+    }
+   },
+   "DependsOn": [
+    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6",
+    "aws:asset:property": "Code"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1WLQQ6CMBBFz8K+jIiJrpGlC40cwNQykgq0ptNCSNO7m1IT4uq/9+dPCWV5giLjM+Wi7fNBPsE3loue8Zkevh8J/AUXVr9UjGqQnKKsEBihMGhp5Ip3aMA3q8dBosDoAP7sRJ/aH6W46UGKZauTh8BqR1aPdyTtjMA42PjvdDN6ki2aMydkFRHaxvJOqi7+XJ39OBuY0i3Cm3ZTWcD+CEX2Jilz45SVI8I95RfXw23eCQEAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "dev-escrowly-stack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "devescrowlybucketarn": {
+   "Value": {
+    "Fn::GetAtt": [
+     "devescrowlyfilesD7D0FC74",
+     "Arn"
+    ]
+   }
+  },
+  "devescrowlykmskeyarn": {
+   "Value": {
+    "Fn::GetAtt": [
+     "devescrowlykmskey34A0C59F",
+     "Arn"
+    ]
+   }
+  },
+  "devescrowlyappsecretsarn": {
+   "Value": {
+    "Ref": "devescrowlyappsecretsD1AE2D29"
+   }
+  },
+  "devescrowlysetupinstructions": {
+   "Value": "S3 and KMS deployed. Using local PostgreSQL for development."
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

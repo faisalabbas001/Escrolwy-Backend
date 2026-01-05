@@ -1,0 +1,37 @@
+// Prisma schema for Listener Engine Service
+// Uses listener_engine_db schema in shared PostgreSQL instance
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../generated/prisma"
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["listener_engine_db"]
+}
+
+// ====================================
+// Listener Engine Models
+// ====================================
+
+/// Stores the last processed block for each chain listener
+/// Used for checkpoint/resume functionality
+model ListenerState {
+  id                 String   @id @default(uuid()) @db.Uuid
+  chain              String   @db.VarChar(10) // eth, bnb, poly, sol, trc
+  listenerType       String   @default("deposit") @map("listener_type") @db.VarChar(20)
+  lastProcessedBlock BigInt   @default(0) @map("last_processed_block")
+  confirmations      Int?     // Reserved for future use
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([chain, listenerType], name: "chain_listener_type_unique")
+  @@index([chain], map: "idx_listener_state_chain")
+  @@map("listener_state")
+  @@schema("listener_engine_db")
+}
+

@@ -2,9 +2,9 @@
 // Uses auth_db schema in shared PostgreSQL instance
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  output        = "../generated/prisma"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
-  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
@@ -16,36 +16,162 @@ datasource db {
 // ====================================
 // Auth Service Models
 // ====================================
-// Note: Full schema will be added later per requirements
-// This is a basic setup to demonstrate Prisma configuration
 
 model User {
-  id            String    @id @default(uuid()) @db.Uuid
-  email         String    @unique
-  passwordHash  String    @map("password_hash")
-  firstName     String?   @map("first_name")
-  lastName      String?   @map("last_name")
-  isActive      Boolean   @default(true) @map("is_active")
-  isVerified    Boolean   @default(false) @map("is_verified")
-  lastLoginAt   DateTime? @map("last_login_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id                        String    @id @default(uuid()) @db.Uuid
+  email                     String    @unique @db.Text
+  phone                     String?   @db.Text
+  role                      String    @default("user") @db.Text // user | super-admin | staff-website (enforced via CHECK)
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                 DateTime? @map("deleted_at") @db.Timestamptz
 
+  // Relations
+  authCredential  AuthCredential?
+  userProfile     UserProfile?
+  kycStatusRecord KycStatus? @relation("UserKycStatus")
+
+  @@index([email], map: "idx_users_email")
+  @@index([role], map: "idx_users_role")
+  // @@index([status], map: "idx_users_status")
+  // @@index([status], map: "idx_users_status")
   @@map("users")
   @@schema("auth_db")
 }
 
-// Outbox pattern for event-driven architecture
-model Outbox {
-  id            String    @id @default(uuid()) @db.Uuid
-  aggregateId   String    @map("aggregate_id")
-  aggregateType String    @map("aggregate_type")
-  eventType     String    @map("event_type")
-  payload       Json
-  createdAt     DateTime  @default(now()) @map("created_at")
-  processedAt   DateTime? @map("processed_at")
+model AuthCredential {
+  id                      String    @id @default(uuid()) @db.Uuid
+  userId                  String    @unique @map("user_id") @db.Uuid
+  passwordHash            String?   @map("password_hash") @db.Text
+  passwordAlgo            String?   @map("password_algo") @db.Text
+  mfaEnabled              Boolean   @default(false) @map("mfa_enabled")
+  mfaType                 String?   @map("mfa_type") @db.Text
+  mfaSecretEncrypted      String?   @map("mfa_secret_encrypted") @db.Text
+  oauthProvider           String?   @map("oauth_provider") @db.Text
+  oauthSubject            String?   @map("oauth_subject") @db.Text
+  lastPasswordRotatedAt   DateTime? @map("last_password_rotated_at") @db.Timestamptz
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
-  @@index([processedAt])
-  @@map("outbox")
+  // Relations
+  user         User                 @relation(fields: [userId], references: [id])
+  passwordResetTokens PasswordResetToken[]
+  backupCodes  TwoFactorBackupCode[]
+
+  @@index([userId], map: "idx_auth_credentials_user")
+  @@map("auth_credentials")
+  @@schema("auth_db")
+}
+
+model PasswordResetToken {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  token             String    @unique @db.Text
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz
+  usedAt            DateTime? @map("used_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  authCredential AuthCredential @relation(fields: [userId], references: [userId])
+
+  @@index([userId], map: "idx_password_reset_tokens_user")
+  @@index([token], map: "idx_password_reset_tokens_token")
+  @@index([expiresAt], map: "idx_password_reset_tokens_expires")
+  @@map("password_reset_tokens")
+  @@schema("auth_db")
+}
+
+model TwoFactorBackupCode {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  codeHash          String    @map("code_hash") @db.Text
+  usedAt            DateTime? @map("used_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  authCredential AuthCredential @relation(fields: [userId], references: [userId])
+
+  @@index([userId], map: "idx_backup_codes_user")
+  @@index([usedAt], map: "idx_backup_codes_used_at")
+  @@map("two_factor_backup_codes")
+  @@schema("auth_db")
+}
+
+model UserProfile {
+  id                        String    @id @default(uuid()) @db.Uuid
+  userId                    String    @unique @map("user_id") @db.Uuid
+  status                    String    @default("active") @db.Text // active | locked (enforced via CHECK)
+  kycStatus                 String    @map("kyc_status") @db.Text // not_started | pending | approved | rejected (enforced via CHECK)
+  kycLevel                  String?   @map("kyc_level") @db.Text
+  complianceCaseId          String?   @map("compliance_case_id") @db.Text
+  displayName               String?   @map("display_name") @db.Text
+  // companyName               String?   @map("company_name") @db.Text
+  // companyBillingAddress     String?   @map("company_billing_address") @db.Text
+  // preferredLanguage         String    @default("en") @map("preferred_language") @db.Text
+  // companyRepresentativeName String?   @map("company_representative_name") @db.Text
+
+   walletReady               Boolean   @default(false) @map("wallet_ready")
+  // acceptTermsAt             DateTime? @map("accept_terms_at") @db.Timestamptz
+  // lastLoginAt               DateTime? @map("last_login_at") @db.Timestamptz
+  preferredLanguage         String    @default("en") @map("preferred_language") @db.Text
+
+  companyName               String?   @map("company_name") @db.Text
+  companyRepresentativeName String?   @map("company_representative_name") @db.Text
+  companyBillingAddress     String?   @map("company_billing_address") @db.Text
+  primaryPhone              String?   @map("primary_phone") @db.Text
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_profiles")
+  @@schema("auth_db")
+}
+
+model KycStatus {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @unique @map("user_id") @db.Uuid
+  status          String    @db.Text // not_started | pending | approved | rejected (enforced via CHECK)
+  level           String?   @db.Text
+  referenceId     String?   @map("reference_id") @db.Text
+  updatedByAdminId String?  @map("updated_by_admin_id") @db.Uuid // soft reference
+  reason          String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user User @relation("UserKycStatus", fields: [userId], references: [id])
+
+  @@index([userId], map: "idx_kyc_status_user")
+  @@map("kyc_status")
+  @@schema("auth_db")
+}
+
+// ====================================
+// Kafka Outbox Pattern
+// Matches @escrowly/kafka-publisher OutboxEvent interface
+// ====================================
+
+/// Guarantees Kafka events are never lost - Transactional Outbox Pattern
+/// Events are written here in same transaction as state changes,
+/// then published to Kafka by the outbox processor.
+model OutboxEvent {
+  id           String    @id @default(uuid())
+  topic        String    // Kafka topic
+  partitionKey String    // Partition key (userId for ordering)
+  payload      String    @db.Text // JSON-serialized event
+  status       String    @default("pending") // pending | processing | published | failed
+  retryCount   Int       @default(0) // Number of publish attempts
+  lastError    String?   @db.Text // Last error message
+  createdAt    DateTime  @default(now())
+  publishedAt  DateTime? // When published to Kafka
+  nextRetryAt  DateTime? // For exponential backoff
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([nextRetryAt])
+  @@index([topic])
+  @@map("outbox_events")
   @@schema("auth_db")
 }

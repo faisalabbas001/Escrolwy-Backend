@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Public } from '@escrowly/auth-common';
 import { HealthService } from './health.service';
 
 /**
@@ -7,8 +8,10 @@ import { HealthService } from './health.service';
  *
  * Provides endpoints to monitor service health and readiness.
  * Used by load balancers and monitoring systems.
+ * All health endpoints are public (no authentication required).
  */
 @ApiTags('health')
+@Public()
 @Controller({
   path: 'health',
   version: '1',

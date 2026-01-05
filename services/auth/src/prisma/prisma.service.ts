@@ -4,7 +4,8 @@ import {
   OnModuleDestroy,
   Logger,
 } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../../generated/prisma';
+import { SecretsService } from '@escrowly/shared-config';
 
 /**
  * Prisma Service
@@ -16,6 +17,7 @@ import { PrismaClient } from '@prisma/client';
  * - Implements OnModuleInit for connection on startup
  * - Implements OnModuleDestroy for graceful shutdown
  * - Provides type-safe database access through Prisma Client
+ * - Dynamically fetches database credentials from Secrets Manager
  */
 @Injectable()
 export class PrismaService
@@ -23,11 +25,14 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+  private databaseUrl: string | null = null;
 
-  constructor() {
+  constructor(private readonly secretsService: SecretsService) {
+    // PrismaClient reads DATABASE_URL from process.env when $connect() is called
+    // We'll set process.env.DATABASE_URL in onModuleInit before connecting
     super({
       log: [
-        { emit: 'event', level: 'query' },
+        // { emit: 'event', level: 'query' },
         { emit: 'event', level: 'error' },
         { emit: 'event', level: 'info' },
         { emit: 'event', level: 'warn' },
@@ -51,9 +56,12 @@ export class PrismaService
 
   /**
    * Connect to database on module initialization
+   * Fetches database URL dynamically from Secrets Service (with credentials from Secrets Manager)
    */
   async onModuleInit() {
     try {
+      // DATABASE_URL is already set by the factory in PrismaModule
+      // Just connect to the database
       await this.$connect();
       this.logger.log('✅ Connected to PostgreSQL (auth_db schema)');
     } catch (error) {

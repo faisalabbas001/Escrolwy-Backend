@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { SecretsService } from '@escrowly/shared-config';
 import { PrismaService } from './prisma.service';
 
 /**
@@ -11,7 +12,20 @@ import { PrismaService } from './prisma.service';
  */
 @Global()
 @Module({
-  providers: [PrismaService],
+  providers: [
+    {
+      provide: PrismaService,
+      useFactory: async (secretsService: SecretsService) => {
+        // Set DATABASE_URL before creating PrismaService
+        // This ensures PrismaClient reads the correct URL at construction time
+        const dbUrl = await secretsService.getDatabaseUrl();
+        process.env.DATABASE_URL = dbUrl;
+        console.log('🔗 Final Database URL:', dbUrl);
+        return new PrismaService(secretsService);
+      },
+      inject: [SecretsService],
+    },
+  ],
   exports: [PrismaService],
 })
 export class PrismaModule {}

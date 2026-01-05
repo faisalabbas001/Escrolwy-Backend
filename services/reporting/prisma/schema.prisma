@@ -1,0 +1,183 @@
+// Prisma schema for Reporting Service
+// Uses reporting_db schema in shared PostgreSQL instance
+// READ-ONLY Analytics & Observer Service
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated/prisma"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["reporting_db"]
+}
+
+// ====================================
+// 1. DAILY METRICS
+// Purpose: Daily aggregated business metrics
+// Population: Batch jobs / stream aggregation
+// ====================================
+
+model DailyMetrics {
+  id                     String   @id @default(uuid()) @db.Uuid
+  date                   DateTime @db.Date @unique
+  totalDeposits          Decimal  @default(0) @map("total_deposits") @db.Decimal(20, 8)
+  totalWithdrawals       Decimal  @default(0) @map("total_withdrawals") @db.Decimal(20, 8)
+  totalInternalTransfers Decimal  @default(0) @map("total_internal_transfers") @db.Decimal(20, 8)
+  escrowCreated          Int      @default(0) @map("escrow_created")
+  escrowCompleted        Int      @default(0) @map("escrow_completed")
+  escrowDisputed         Int      @default(0) @map("escrow_disputed")
+  escrowRefunded         Int      @default(0) @map("escrow_refunded")
+  feesCollected          Decimal  @default(0) @map("fees_collected") @db.Decimal(20, 8)
+  volumeByCurrency       Json     @default("{}") @map("volume_by_currency") // JSON object with currency breakdown
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([date], map: "idx_daily_metrics_date")
+  @@map("daily_metrics")
+  @@schema("reporting_db")
+}
+
+// ====================================
+// 2. SYSTEM METRICS
+// Purpose: System & infrastructure health
+// ====================================
+
+model SystemMetrics {
+  id          String   @id @default(uuid()) @db.Uuid
+  serviceName String   @map("service_name") @db.Text // e.g., "wallet-listener", "escrow-service"
+  metricType  String   @map("metric_type") @db.Text // listener_lag, kafka_lag, wallet_balance
+  metricValue Decimal  @map("metric_value") @db.Decimal(20, 8)
+  chain       String?  @db.Text // ETH, BTC, POLYGON, etc.
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([serviceName, metricType, chain], map: "uq_system_metrics")
+  @@index([serviceName], map: "idx_system_metrics_service")
+  @@index([metricType], map: "idx_system_metrics_type")
+  @@map("system_metrics")
+  @@schema("reporting_db")
+}
+
+// ====================================
+// 3. ALERTS
+// Purpose: Active & historical alerts (deduplicated)
+// ====================================
+
+/// Alert severity levels
+/// LOW | MEDIUM | HIGH | CRITICAL
+
+/// Alert status
+/// ACTIVE | ACKNOWLEDGED | RESOLVED
+
+model Alert {
+  id          String    @id @default(uuid()) @db.Uuid
+  alertType   String    @map("alert_type") @db.Text // LISTENER_LAG, ESCROW_STUCK, LEDGER_MISMATCH, FAILED_WITHDRAWALS, LOW_HOT_WALLET_BALANCE
+  source      String    @db.Text // originating service or component
+  severity    String    @db.Text // LOW, MEDIUM, HIGH, CRITICAL
+  description String    @db.Text
+  status      String    @default("ACTIVE") @db.Text // ACTIVE, ACKNOWLEDGED, RESOLVED
+  metadata    Json?     @default("{}") // Additional context data
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz
+
+  @@index([alertType], map: "idx_alerts_type")
+  @@index([status], map: "idx_alerts_status")
+  @@index([severity], map: "idx_alerts_severity")
+  @@index([createdAt], map: "idx_alerts_created")
+  @@map("alerts")
+  @@schema("reporting_db")
+}
+
+// ====================================
+// 4. ALERT RULES
+// Purpose: Configurable alert thresholds (no code change required)
+// ====================================
+
+model AlertRule {
+  id                  String   @id @default(uuid()) @db.Uuid
+  ruleType            String   @map("rule_type") @db.Text // LISTENER_LAG, ESCROW_STUCK, FAILED_WITHDRAWALS, LOW_HOT_WALLET_BALANCE
+  conditionExpression String   @map("condition_expression") @db.Text // e.g., "block_lag > 100", "state_duration > 48h"
+  threshold           Decimal  @db.Decimal(20, 8) // numeric threshold value
+  severity            String   @db.Text // LOW, MEDIUM, HIGH, CRITICAL
+  action              String   @db.Text // slack, email, sms, or comma-separated
+  isActive            Boolean  @default(true) @map("is_active")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([ruleType], map: "uq_alert_rules_type")
+  @@index([isActive], map: "idx_alert_rules_active")
+  @@map("alert_rules")
+  @@schema("reporting_db")
+}
+
+// ====================================
+// 5. AUDIT SNAPSHOTS
+// Purpose: Compliance & admin activity summaries
+// ====================================
+
+model AuditSnapshot {
+  id          String   @id @default(uuid()) @db.Uuid
+  eventType   String   @map("event_type") @db.Text // withdrawal, kyc, admin_action, deposit, escrow
+  referenceId String   @map("reference_id") @db.Text // ID of the related entity
+  userId      String?  @map("user_id") @db.Uuid
+  amount      Decimal? @db.Decimal(20, 8)
+  metadata    Json     @default("{}") // Additional context in JSON
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([eventType], map: "idx_audit_snapshots_type")
+  @@index([userId], map: "idx_audit_snapshots_user")
+  @@index([referenceId], map: "idx_audit_snapshots_ref")
+  @@index([createdAt], map: "idx_audit_snapshots_created")
+  @@map("audit_snapshots")
+  @@schema("reporting_db")
+}
+
+// ====================================
+// Kafka Outbox Pattern
+// Matches @escrowly/kafka-publisher OutboxEvent interface
+// ====================================
+
+/// Guarantees Kafka events are never lost - Transactional Outbox Pattern
+/// Events are written here in same transaction as state changes,
+/// then published to Kafka by the outbox processor.
+model OutboxEvent {
+  id           String    @id @default(uuid())
+  topic        String    // Kafka topic
+  partitionKey String    // Partition key (userId for ordering)
+  payload      String    @db.Text // JSON-serialized event
+  status       String    @default("pending") // pending | processing | published | failed
+  retryCount   Int       @default(0) // Number of publish attempts
+  lastError    String?   @db.Text // Last error message
+  createdAt    DateTime  @default(now())
+  publishedAt  DateTime? // When published to Kafka
+  nextRetryAt  DateTime? // For exponential backoff
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([nextRetryAt])
+  @@index([topic])
+  @@map("outbox_events")
+  @@schema("reporting_db")
+}
+
+// ====================================
+// 6. KAFKA FAILURES
+// Purpose: Persist failed events for debugging and replay
+// ====================================
+
+model KafkaFailure {
+  id            String   @id @default(uuid()) @db.Uuid
+  topic         String   @db.Text
+  partition     Int?
+  offset        String?  @db.Text
+  error         String   @db.Text // Failure reason/stack trace
+  payload       Json?    @default("{}") // The original event payload
+  sourceService String?  @map("source_service") @db.Text
+  status        String   @default("FAILED") @db.Text // FAILED, REPLAYED, IGNORED
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([topic], map: "idx_kafka_failures_topic")
+  @@index([createdAt], map: "idx_kafka_failures_created")
+  @@map("kafka_failures")
+  @@schema("reporting_db")
+}

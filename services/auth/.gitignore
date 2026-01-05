@@ -35,8 +35,8 @@ coverage/
 .nyc_output
 
 # Prisma
-prisma/migrations/
-!prisma/migrations/.gitkeep
+# Migrations are tracked in git
+# prisma/migrations/
 
 # Temporary files
 *.tmp

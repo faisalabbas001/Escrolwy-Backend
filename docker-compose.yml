@@ -1,27 +1,393 @@
 version: "3.9"
 
 services:
-  # NOTE: PostgreSQL removed - using AWS Aurora instead
-  # If you need local PostgreSQL for testing, uncomment below:
-  # postgres:
-  #   image: postgres:16-alpine
-  #   container_name: escrowly-postgres
-  #   environment:
-  #     POSTGRES_USER: escrowly_dev
-  #     POSTGRES_PASSWORD: escrowly_dev_password
-  #     POSTGRES_DB: escrowly
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #     - ./scripts/init-schemas.sql:/docker-entrypoint-initdb.d/init-schemas.sql
-  #   networks:
-  #     - escrowly-network
+  # ====================================
+  # Infrastructure Services
+  # ====================================
 
-  # PgAdmin - GUI for database management (can connect to Aurora)
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: escrowly-postgres
+    environment:
+      POSTGRES_USER: escrowly_dev
+      POSTGRES_PASSWORD: escrowly_dev_password
+      POSTGRES_DB: escrowly
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-schemas.sql:/docker-entrypoint-initdb.d/init-schemas.sql
+    networks:
+      - escrowly-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U escrowly_dev -d escrowly"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis - Session storage and caching
+  redis:
+    image: redis:7-alpine
+    container_name: escrowly-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass escrowly_redis_password
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "escrowly_redis_password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # ====================================
+  # Application Services
+  # ====================================
+
+  # Auth Service - Authentication & User Management
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    container_name: escrowly-auth
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SERVICE_NAME: auth-service
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=auth_db
+      JWT_SECRET: ${JWT_SECRET:-dummy_jwt_secret_change_after_deployment}
+      JWT_ACCESS_TOKEN_EXPIRY: 15m
+      JWT_REFRESH_TOKEN_EXPIRY: 7d
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # Admin Service - Blog, Help Desk, Admin Operations
+  admin-service:
+    build:
+      context: .
+      dockerfile: services/admin/Dockerfile
+    container_name: escrowly-admin
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      SERVICE_NAME: admin-service
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=admin_db
+      JWT_SECRET: ${JWT_SECRET:-dummy_jwt_secret_change_after_deployment}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET}
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # BFF Service - Backend for Frontend (API Gateway)
+  bff-service:
+    build:
+      context: .
+      dockerfile: services/bff/Dockerfile
+    container_name: escrowly-bff
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      SERVICE_NAME: bff-service
+      AUTH_SERVICE_URL: http://auth-service:3000
+      ADMIN_SERVICE_URL: http://admin-service:3002
+      INQUIRY_SERVICE_URL: http://inquiry-service:3003
+      NOTIFICATION_SERVICE_URL: http://notification-service:3005
+      JWT_SECRET: ${JWT_SECRET:-dummy_jwt_secret_change_after_deployment}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      LOG_LEVEL: info
+    depends_on:
+      - auth-service
+      - admin-service
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # Notification Service - Email notifications via Resend
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    container_name: escrowly-notification
+    ports:
+      - "3009:3009"
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      SERVICE_NAME: notification-service
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=notification_db
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-false}
+      KAFKA_CLIENT_ID: notification-service
+      KAFKA_GROUP_ID: notification-consumer-group
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+      KAFKA_SSL: ${KAFKA_SSL:-false}
+      AUTH_SERVICE_URL: http://auth-service:3000
+      SERVICE_TO_SERVICE_TOKEN: ${SERVICE_TO_SERVICE_TOKEN:-test-s2s-token-12345}
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # ====================================
+  # Listener Engine Services (5 chains)
+  # ====================================
+
+  # Listener Engine - Ethereum
+  listener-eth:
+    build:
+      context: .
+      dockerfile: services/listener-engine/Dockerfile
+    container_name: escrowly-listener-eth
+    ports:
+      - "3010:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      SERVICE_NAME: listener-engine
+      CHAIN: eth
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=listener_engine_db
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      ETH_RPC_URL: ${ETH_RPC_URL:-https://mainnet.infura.io/v3/YOUR_KEY}
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # Listener Engine - BNB Smart Chain
+  listener-bnb:
+    build:
+      context: .
+      dockerfile: services/listener-engine/Dockerfile
+    container_name: escrowly-listener-bnb
+    ports:
+      - "3011:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      SERVICE_NAME: listener-engine
+      CHAIN: bnb
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=listener_engine_db
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      BSC_RPC_URL: ${BSC_RPC_URL:-https://bsc-dataseed.binance.org}
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # Listener Engine - Polygon
+  listener-poly:
+    build:
+      context: .
+      dockerfile: services/listener-engine/Dockerfile
+    container_name: escrowly-listener-poly
+    ports:
+      - "3012:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      SERVICE_NAME: listener-engine
+      CHAIN: poly
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=listener_engine_db
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL:-https://polygon-rpc.com}
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # Listener Engine - Solana
+  listener-sol:
+    build:
+      context: .
+      dockerfile: services/listener-engine/Dockerfile
+    container_name: escrowly-listener-sol
+    ports:
+      - "3013:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      SERVICE_NAME: listener-engine
+      CHAIN: sol
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=listener_engine_db
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # Listener Engine - Tron
+  listener-trc:
+    build:
+      context: .
+      dockerfile: services/listener-engine/Dockerfile
+    container_name: escrowly-listener-trc
+    ports:
+      - "3014:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      SERVICE_NAME: listener-engine
+      CHAIN: trc
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=listener_engine_db
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      TRON_RPC_URL: ${TRON_RPC_URL:-https://api.trongrid.io}
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # Listener Engine - Single instance (all chains)
+  listener-engine:
+    build:
+      context: .
+      dockerfile: services/listener-engine/Dockerfile
+    container_name: escrowly-listener-all
+    ports:
+      - "3015:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      SERVICE_NAME: listener-engine
+      CHAIN: all
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=listener_engine_db
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      ETH_RPC_URL: ${ETH_RPC_URL:-https://mainnet.infura.io/v3/YOUR_KEY}
+      BSC_RPC_URL: ${BSC_RPC_URL:-https://bsc-dataseed.binance.org}
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL:-https://polygon-rpc.com}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      TRON_RPC_URL: ${TRON_RPC_URL:-https://api.trongrid.io}
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # ====================================
+  # Wallet Service - Blockchain Execution Engine
+  # ====================================
+
+  wallet-service:
+    build:
+      context: .
+      dockerfile: services/wallet/Dockerfile
+    container_name: escrowly-wallet
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      SERVICE_NAME: wallet-service
+      DATABASE_URL: postgresql://escrowly_dev:escrowly_dev_password@postgres:5432/escrowly?schema=wallet_db
+      REDIS_URL: redis://:escrowly_redis_password@redis:6379
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_ENABLED: "true"
+      # RPC URLs (reuse from listener-engine)
+      ETH_RPC_URL: ${ETH_RPC_URL:-https://mainnet.infura.io/v3/YOUR_KEY}
+      BSC_RPC_URL: ${BSC_RPC_URL:-https://bsc-dataseed.binance.org}
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL:-https://polygon-rpc.com}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      TRON_RPC_URL: ${TRON_RPC_URL:-https://api.trongrid.io}
+      # Hot wallet addresses
+      EVM_HOT_WALLET: ${EVM_HOT_WALLET:-0x0000000000000000000000000000000000000000}
+      SOL_HOT_WALLET: ${SOL_HOT_WALLET:-11111111111111111111111111111111}
+      TRC_HOT_WALLET: ${TRC_HOT_WALLET:-T0000000000000000000000000000000}
+      # Funding wallet keys (set in .env for production)
+      EVM_FUNDING_WALLET_KEY: ${EVM_FUNDING_WALLET_KEY:-}
+      SOL_FUNDING_WALLET_KEY: ${SOL_FUNDING_WALLET_KEY:-}
+      TRC_FUNDING_WALLET_KEY: ${TRC_FUNDING_WALLET_KEY:-}
+      # Encryption
+      ENCRYPTION_MODE: ${ENCRYPTION_MODE:-local}
+      WALLET_ENCRYPTION_KEY: ${WALLET_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef}
+      # Funding thresholds
+      EVM_FUNDING_THRESHOLD: ${EVM_FUNDING_THRESHOLD:-0.1}
+      EVM_FUNDING_AMOUNT: ${EVM_FUNDING_AMOUNT:-0.5}
+      SOL_FUNDING_THRESHOLD: ${SOL_FUNDING_THRESHOLD:-1}
+      SOL_FUNDING_AMOUNT: ${SOL_FUNDING_AMOUNT:-5}
+      TRC_FUNDING_THRESHOLD: ${TRC_FUNDING_THRESHOLD:-100}
+      TRC_FUNDING_AMOUNT: ${TRC_FUNDING_AMOUNT:-500}
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - escrowly-network
+    restart: unless-stopped
+
+  # ====================================
+  # Development Tools (Optional)
+  # ====================================
+
+  # PgAdmin - Database GUI (comment out for production)
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: escrowly-pgadmin
+    profiles: ["dev"]
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@escrowly.local
       PGADMIN_DEFAULT_PASSWORD: admin
@@ -30,10 +396,11 @@ services:
     networks:
       - escrowly-network
 
-  # Redpanda - Kafka-compatible event streaming (lighter than Kafka for local dev)
+  # Redpanda - Kafka-compatible (for future event streaming)
   redpanda:
     image: redpandadata/redpanda:latest
     container_name: escrowly-redpanda
+    profiles: ["dev"]
     command:
       - redpanda
       - start
@@ -45,53 +412,48 @@ services:
       - --node-id
       - "0"
       - --kafka-addr
-      - PLAINTEXT://0.0.0.0:9092
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr
-      - PLAINTEXT://redpanda:9092
+      - internal://redpanda:9092,external://localhost:19092
     ports:
-      - "9092:9092"
-      - "9644:9644" # Admin API
+      - "19092:19092"
+      - "9644:9644"
     volumes:
       - redpanda_data:/var/lib/redpanda/data
-    healthcheck:
-      test:
-        ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
     networks:
       - escrowly-network
 
-  # Redis - Caching and session storage
-  redis:
-    image: redis:7-alpine
-    container_name: escrowly-redis
+  # Kafka UI - Visualize Kafka events
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: escrowly-kafka-ui
+    profiles: ["dev"]
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: escrowly-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: redpanda:9092
     ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes --requirepass escrowly_redis_password
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "8080:8080"
+    depends_on:
+      - redpanda
     networks:
       - escrowly-network
+    restart: unless-stopped
 
-  # Mailhog - Email testing (captures outgoing emails)
+  # Mailhog - Email testing
   mailhog:
     image: mailhog/mailhog:latest
     container_name: escrowly-mailhog
+    profiles: ["dev"]
     ports:
-      - "1025:1025" # SMTP server
-      - "8025:8025" # Web UI
+      - "1025:1025"
+      - "8025:8025"
     networks:
       - escrowly-network
 
 volumes:
-  # postgres_data:  # Uncomment if using local PostgreSQL
-  #   driver: local
+  postgres_data:
+    driver: local
   redpanda_data:
     driver: local
   redis_data:

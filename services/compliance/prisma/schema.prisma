@@ -1,0 +1,147 @@
+// Prisma schema for Compliance Service
+// Uses compliance_db schema in shared PostgreSQL instance
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated/prisma"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["compliance_db"]
+}
+
+// ====================================
+// Compliance Service Models
+// ====================================
+
+/// Primary KYC table - one record per user
+/// Stores authoritative KYC state
+model KycRecord {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @unique @map("user_id") @db.Uuid
+  personaInquiryId String?   @map("persona_inquiry_id") @db.Text
+  referenceId      String?   @map("reference_id") @db.Text
+  status           String    @default("NOT_STARTED") @db.Text // NOT_STARTED, STARTED, APPROVED, REJECTED, REVIEW_REQUIRED
+  metadata         Json?     // Persona metadata (timestamps, summary)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  risks  Risk[]
+  limits UserLimit?
+
+  @@index([userId], map: "idx_kyc_records_user")
+  @@index([status], map: "idx_kyc_records_status")
+  @@index([personaInquiryId], map: "idx_kyc_records_persona_inquiry")
+  @@map("kyc_records")
+  @@schema("compliance_db")
+}
+
+/// Risk flags from Persona verification
+/// Created only if Persona returns risk indicators
+model Risk {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  kycRecordId String   @map("kyc_record_id") @db.Uuid
+  riskType    String   @map("risk_type") @db.Text
+  severity    String   @db.Text // LOW, MEDIUM, HIGH
+  source      String   @default("persona") @db.Text
+  details     Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  kycRecord KycRecord @relation(fields: [kycRecordId], references: [id])
+
+  @@index([userId], map: "idx_risks_user")
+  @@index([kycRecordId], map: "idx_risks_kyc_record")
+  @@map("risks")
+  @@schema("compliance_db")
+}
+
+/// User limits - created/updated only after KYC approval
+/// Exposes limits to Escrow and Ledger services via S2S APIs
+model UserLimit {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @map("user_id") @db.Uuid
+  kycRecordId String   @unique @map("kyc_record_id") @db.Uuid
+  escrowLimit Decimal  @map("escrow_limit") @db.Decimal(18, 2)
+  ledgerLimit Decimal  @map("ledger_limit") @db.Decimal(18, 2)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  kycRecord KycRecord @relation(fields: [kycRecordId], references: [id])
+
+  @@index([userId], map: "idx_limits_user")
+  @@map("limits")
+  @@schema("compliance_db")
+}
+
+/// Webhook idempotency tracking
+/// Prevents duplicate processing of Persona webhook events
+model WebhookEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  eventId     String   @unique @map("event_id") @db.Text // Persona event ID
+  eventType   String   @map("event_type") @db.Text
+  inquiryId   String   @map("inquiry_id") @db.Text
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz
+  payload     Json?
+
+  @@index([eventId], map: "idx_webhook_events_event_id")
+  @@index([inquiryId], map: "idx_webhook_events_inquiry")
+  @@map("webhook_events")
+  @@schema("compliance_db")
+}
+
+// ====================================
+// Kafka Outbox Pattern
+// Matches @escrowly/kafka-publisher OutboxEvent interface
+// ====================================
+
+/// Guarantees Kafka events are never lost - Transactional Outbox Pattern
+/// Events are written here in same transaction as state changes,
+/// then published to Kafka by the outbox processor.
+model OutboxEvent {
+  id           String    @id @default(uuid())
+  topic        String    // Kafka topic
+  partitionKey String    // Partition key (userId for ordering)
+  payload      String    @db.Text // JSON-serialized event
+  status       String    @default("pending") // pending | processing | published | failed
+  retryCount   Int       @default(0) // Number of publish attempts
+  lastError    String?   @db.Text // Last error message
+  createdAt    DateTime  @default(now())
+  publishedAt  DateTime? // When published to Kafka
+  nextRetryAt  DateTime? // For exponential backoff
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([nextRetryAt])
+  @@index([topic])
+  @@map("outbox_events")
+  @@schema("compliance_db")
+}
+
+// ====================================
+// Audit Logging
+// ====================================
+
+/// Audit log for compliance actions
+/// Tracks all KYC state changes for regulatory compliance
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  action    String   @db.Text // e.g., KYC_STARTED, KYC_APPROVED, LIMITS_UPDATED
+  details   Json?    // Additional context
+  ipAddress String?  @map("ip_address") @db.Text
+  userAgent String?  @map("user_agent") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([userId], map: "idx_audit_logs_user")
+  @@index([action], map: "idx_audit_logs_action")
+  @@index([createdAt], map: "idx_audit_logs_created_at")
+  @@map("audit_logs")
+  @@schema("compliance_db")
+}

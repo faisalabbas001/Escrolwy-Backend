@@ -4,7 +4,7 @@ import { ServiceUnavailableException } from '@nestjs/common';
 import { HealthService } from './health.service';
 import { PrismaService } from '../prisma';
 import { mockDeep, DeepMockProxy } from 'jest-mock-extended';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../../generated/prisma';
 
 /**
  * Health Service Unit Tests
