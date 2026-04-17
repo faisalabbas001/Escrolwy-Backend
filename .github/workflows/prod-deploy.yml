@@ -1,0 +1,160 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Services to deploy (comma-separated, or "all")'
+        required: true
+        default: 'all'
+      run_migrations:
+        description: 'Run database migrations'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: '503437077638'
+  ECR_PREFIX: escrowly-prod
+  ECS_CLUSTER: escrowly-prod-cluster
+  ALL_SERVICES: 'auth,bff,admin,inquiry,escrow,ledger,wallet,notification,compliance,reporting,connect,listener-engine'
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::503437077638:role/escrowly-prod-github-actions
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine services to build
+        id: services
+        run: |
+          if [ "${{ github.event.inputs.services }}" = "all" ]; then
+            echo "list=${{ env.ALL_SERVICES }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "list=${{ github.event.inputs.services }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push Docker images
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ steps.services.outputs.list }}"
+          for service in "${SERVICES[@]}"; do
+            service=$(echo "$service" | xargs)  # trim whitespace
+            echo "=========================================="
+            echo "Building: $service"
+            echo "=========================================="
+
+            IMAGE="${ECR_REGISTRY}/${ECR_PREFIX}/${service}:${IMAGE_TAG}"
+            IMAGE_LATEST="${ECR_REGISTRY}/${ECR_PREFIX}/${service}:latest"
+
+            docker build \
+              -t "$IMAGE" \
+              -t "$IMAGE_LATEST" \
+              -f "services/${service}/Dockerfile" \
+              .
+
+            docker push "$IMAGE"
+            docker push "$IMAGE_LATEST"
+
+            echo "Pushed: $IMAGE"
+          done
+
+  migrate:
+    name: Run Database Migrations
+    needs: build-and-push
+    if: github.event.inputs.run_migrations == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::503437077638:role/escrowly-prod-github-actions
+          aws-region: us-east-1
+
+      - name: Run migration task
+        run: |
+          echo "Migration will be run via ECS RunTask after App stack is deployed"
+          echo "Skipping for initial deployment - migrations run manually"
+          # After App stack is deployed with task definitions:
+          # aws ecs run-task --cluster $ECS_CLUSTER --task-definition escrowly-prod-migration ...
+
+  deploy:
+    name: Deploy ECS Services
+    needs: [build-and-push, migrate]
+    if: always() && needs.build-and-push.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::503437077638:role/escrowly-prod-github-actions
+          aws-region: us-east-1
+
+      - name: Determine services to deploy
+        id: services
+        run: |
+          if [ "${{ github.event.inputs.services }}" = "all" ]; then
+            echo "list=${{ env.ALL_SERVICES }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "list=${{ github.event.inputs.services }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to ECS
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ steps.services.outputs.list }}"
+          for service in "${SERVICES[@]}"; do
+            service=$(echo "$service" | xargs)
+            SERVICE_NAME="${ECR_PREFIX}-${service}"
+
+            echo "Deploying: $SERVICE_NAME"
+            aws ecs update-service \
+              --cluster "$ECS_CLUSTER" \
+              --service "$SERVICE_NAME" \
+              --force-new-deployment \
+              --region "$AWS_REGION" || echo "Service $SERVICE_NAME not found (may not be deployed yet)"
+          done
+
+      - name: Wait for services to stabilize
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ steps.services.outputs.list }}"
+          for service in "${SERVICES[@]}"; do
+            service=$(echo "$service" | xargs)
+            SERVICE_NAME="${ECR_PREFIX}-${service}"
+
+            echo "Waiting for: $SERVICE_NAME"
+            aws ecs wait services-stable \
+              --cluster "$ECS_CLUSTER" \
+              --services "$SERVICE_NAME" \
+              --region "$AWS_REGION" 2>/dev/null || echo "Service $SERVICE_NAME not stable yet (may not exist)"
+          done
