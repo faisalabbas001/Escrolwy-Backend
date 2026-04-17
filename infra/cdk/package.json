@@ -1,0 +1,28 @@
+{
+  "name": "dev-escrowly-infra",
+  "version": "1.0.0",
+  "description": "CDK stack for Escrowly Dev environment (Aurora, S3, KMS, EC2)",
+  "main": "bin/dev.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "diff": "cdk diff",
+    "synth": "cdk synth",
+    "destroy": "cdk destroy",
+    "ec2:synth": "cdk synth --app \"npx ts-node bin/ec2.ts\"",
+    "ec2:diff": "cdk diff --app \"npx ts-node bin/ec2.ts\"",
+    "ec2:deploy": "cdk deploy --app \"npx ts-node bin/ec2.ts\"",
+    "ec2:destroy": "cdk destroy --app \"npx ts-node bin/ec2.ts\""
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.100.0",
+    "constructs": "^10.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.3"
+  }
+}

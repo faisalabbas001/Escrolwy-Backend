@@ -145,17 +145,180 @@ export class SecretsService implements OnModuleInit {
   }
 
   /**
-   * Get database URL
+   * Get database URL with credentials injected from Secrets Manager
+   *
+   * The DATABASE_URL in .env should have placeholders:
+   * postgresql://USERNAME:PASSWORD@host:port/db?schema=...
+   *
+   * This method:
+   * 1. Reads DATABASE_URL from .env (with USERNAME:PASSWORD placeholders)
+   * 2. Fetches actual username/password from AWS Secrets Manager (using DB_SECRET_ARN)
+   * 3. Replaces placeholders with real credentials
+   * 4. Returns the final connection string
+   *
+   * Why? AWS rotates database credentials automatically. Hardcoding them would break after rotation.
+   *
+   * @returns Complete database connection string with credentials
    */
-  getDatabaseUrl(): string {
-    return this.getSecret("DATABASE_URL");
+  async getDatabaseUrl(): Promise<string> {
+    const dbUrlTemplate = this.config.get<string>("DATABASE_URL");
+    if (!dbUrlTemplate) {
+      throw new Error("DATABASE_URL not configured in environment variables");
+    }
+
+    // If URL doesn't contain placeholders, return as-is (local dev with static credentials)
+    // But adjust host for local development (replace Docker service name with localhost)
+    if (
+      !dbUrlTemplate.includes("USERNAME") &&
+      !dbUrlTemplate.includes("PASSWORD")
+    ) {
+      // When running locally (not in Docker), replace 'postgres:5432' with 'localhost:5433'
+      // This allows the same .env to work in both Docker and local dev
+      let finalUrl = dbUrlTemplate;
+      
+      // Check if we're running locally (not in Docker container)
+      // Docker containers can be detected by checking if hostname matches service name
+      // or by checking if we can resolve 'postgres' hostname (only works in Docker network)
+      const isLocalDev = process.env.NODE_ENV === 'development' && 
+                        !process.env.DOCKER_CONTAINER &&
+                        process.env.HOSTNAME !== 'escrowly-auth' &&
+                        process.env.HOSTNAME !== 'escrowly-admin' &&
+                        process.env.HOSTNAME !== 'escrowly-bff';
+      
+      if (isLocalDev) {
+        // Replace Docker service names with localhost and mapped ports
+        // postgres:5432 -> localhost:5433 (Docker maps 5432 to 5433 on host)
+        finalUrl = finalUrl.replace(/postgres:5432/g, 'localhost:5433');
+        finalUrl = finalUrl.replace(/postgres:5433/g, 'localhost:5433');
+      }
+      
+      return finalUrl;
+    }
+
+    // Get database secret ARN from environment
+    const dbSecretArn = this.config.get<string>("DB_SECRET_ARN");
+    if (!dbSecretArn) {
+      throw new Error(
+        "DB_SECRET_ARN not configured. Required when DATABASE_URL contains USERNAME:PASSWORD placeholders."
+      );
+    }
+
+    // Fetch credentials from Secrets Manager
+    const credentials = await this.getDatabaseCredentials(dbSecretArn);
+
+    // Replace placeholders in connection string
+    // Use split/join to avoid any regex issues with special characters in password
+    const encodedUsername = encodeURIComponent(credentials.username);
+    const encodedPassword = encodeURIComponent(credentials.password);
+
+    // Split by USERNAME and PASSWORD, then join with encoded values
+    // This is safer than replace() when dealing with special characters
+    let finalUrl = dbUrlTemplate;
+
+    // Replace USERNAME first
+    const parts = finalUrl.split("USERNAME");
+    if (parts.length === 2) {
+      finalUrl = parts[0] + encodedUsername + parts[1];
+    }
+
+    // Replace PASSWORD second
+    const passwordParts = finalUrl.split("PASSWORD");
+    if (passwordParts.length === 2) {
+      finalUrl = passwordParts[0] + encodedPassword + passwordParts[1];
+    }
+
+    return finalUrl;
+  }
+
+  /**
+   * Get database credentials from AWS Secrets Manager
+   *
+   * @param secretArn - ARN of the secret containing database credentials
+   * @returns Object with username and password
+   */
+  private async getDatabaseCredentials(secretArn: string): Promise<{
+    username: string;
+    password: string;
+  }> {
+    try {
+      // Use Secrets Manager client (works in both local dev and stage/prod)
+      const region = this.config.get<string>("AWS_REGION", "us-east-1");
+      const client = new SecretsManagerClient({ region });
+
+      const command = new GetSecretValueCommand({ SecretId: secretArn });
+      const response = await client.send(command);
+
+      if (!response.SecretString) {
+        throw new Error("Database secret value is empty");
+      }
+
+      const secret = JSON.parse(response.SecretString);
+
+      if (!secret.username || !secret.password) {
+        throw new Error(
+          "Database secret must contain 'username' and 'password' fields"
+        );
+      }
+
+      // Get raw password value
+      // Aurora Secrets Manager returns the password as a plain string
+      // We'll URL-encode it when building the connection string
+      const username = String(secret.username);
+      const password = String(secret.password);
+
+      // Log for debugging (remove in production)
+      this.logger.debug(
+        `Fetched DB credentials - Username: ${username}, Password length: ${password.length}`
+      );
+
+      return {
+        username,
+        password,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch database credentials from Secrets Manager: ${secretArn}`,
+        error
+      );
+      throw new Error(
+        `Failed to fetch database credentials: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
   }
 
   /**
    * Get Redis URL
+   * Automatically adjusts for local development (replaces Docker service names)
+   * Provides default value for local development if not configured
    */
   getRedisUrl(): string {
-    return this.getSecret("REDIS_URL");
+    // Check if we're running locally (not in Docker container)
+    const isLocalDev = process.env.NODE_ENV === 'development' && 
+                      !process.env.DOCKER_CONTAINER &&
+                      process.env.HOSTNAME !== 'escrowly-auth' &&
+                      process.env.HOSTNAME !== 'escrowly-admin' &&
+                      process.env.HOSTNAME !== 'escrowly-bff';
+    
+    // Get Redis URL with default for local dev
+    // Default includes password from docker-compose (escrowly_redis_password)
+    const defaultRedisUrl = isLocalDev 
+      ? 'redis://:escrowly_redis_password@localhost:6379'
+      : 'redis://localhost:6379';
+    
+    let redisUrl = this.getSecret("REDIS_URL", defaultRedisUrl);
+    
+    if (isLocalDev && redisUrl) {
+      // Replace Docker service names with localhost
+      // redis:6379 -> localhost:6379
+      redisUrl = redisUrl.replace(/redis:6379/g, 'localhost:6379');
+      // If Redis URL has password but we're local, ensure it's included
+      // Format: redis://:password@host:port
+      if (redisUrl.includes('redis://') && !redisUrl.includes('@localhost') && redisUrl.includes('@redis')) {
+        redisUrl = redisUrl.replace('@redis', '@localhost');
+      }
+    }
+    
+    return redisUrl;
   }
 
   /**

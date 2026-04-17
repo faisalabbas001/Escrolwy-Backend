@@ -1,0 +1,1573 @@
+{
+	"info": {
+		"_postman_id": "escrowly-backend-2024",
+		"name": "Escrowly Backend - Complete API Collection",
+		"description": "Complete end-to-end testing collection for Escrowly backend microservices.\n\nIncludes:\n- User authentication flows (signup, login, token refresh, MFA)\n- Escrow lifecycle management\n- Wallet and ledger operations\n- Inquiry/support management\n- Notifications and preferences\n- Admin operations\n- KYC/Compliance workflows\n- Reporting and analytics\n\nAll requests route through the BFF gateway on port 3001.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{accessToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global pre-request script",
+					"// Check if access token is expired and refresh if needed",
+					"",
+					"const accessToken = pm.environment.get('accessToken');",
+					"const tokenExpiry = pm.environment.get('tokenExpiry');",
+					"const refreshToken = pm.environment.get('refreshToken');",
+					"",
+					"if (!accessToken || !tokenExpiry) {",
+					"    console.log('No access token found');",
+					"    return;",
+					"}",
+					"",
+					"const now = new Date().getTime();",
+					"const expiryTime = new Date(tokenExpiry).getTime();",
+					"",
+					"// Refresh if token expires in less than 1 minute",
+					"if (now >= expiryTime - 60000 && refreshToken) {",
+					"    console.log('Access token expired or expiring soon, refreshing...');",
+					"    ",
+					"    pm.sendRequest({",
+					"        url: pm.environment.get('baseUrl') + '/auth/token/refresh',",
+					"        method: 'POST',",
+					"        header: {",
+					"            'Content-Type': 'application/json'",
+					"        },",
+					"        body: {",
+					"            mode: 'raw',",
+					"            raw: JSON.stringify({",
+					"                refreshToken: refreshToken,",
+					"                device: {",
+					"                    name: 'Postman Client',",
+					"                    ip: '127.0.0.1'",
+					"                }",
+					"            })",
+					"        }",
+					"    }, function (err, response) {",
+					"        if (err) {",
+					"            console.error('Token refresh failed:', err);",
+					"            return;",
+					"        }",
+					"        ",
+					"        const data = response.json();",
+					"        if (data.accessToken) {",
+					"            pm.environment.set('accessToken', data.accessToken);",
+					"            pm.environment.set('refreshToken', data.refreshToken);",
+					"            ",
+					"            const expiryDate = new Date(now + (data.accessExpiresIn * 1000));",
+					"            pm.environment.set('tokenExpiry', expiryDate.toISOString());",
+					"            ",
+					"            console.log('Token refreshed successfully');",
+					"        }",
+					"    });",
+					"}"
+				]
+			}
+		}
+	],
+	"item": [
+		{
+			"name": "1. Authentication",
+			"item": [
+				{
+					"name": "Signup",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Response has user and session', function () {",
+									"    const data = pm.response.json();",
+									"    pm.expect(data).to.have.property('userId');",
+									"    pm.expect(data).to.have.property('session');",
+									"});",
+									"",
+									"const response = pm.response.json();",
+									"if (response.userId) {",
+									"    pm.environment.set('userId', response.userId);",
+									"    pm.environment.set('userEmail', response.email);",
+									"}",
+									"",
+									"if (response.session) {",
+									"    pm.environment.set('accessToken', response.session.accessToken);",
+									"    pm.environment.set('refreshToken', response.session.refreshToken);",
+									"    ",
+									"    const expiryDate = new Date(Date.now() + (response.session.accessExpiresIn * 1000));",
+									"    pm.environment.set('tokenExpiry', expiryDate.toISOString());",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{$randomEmail}}\",\n  \"password\": \"SecurePass123!\",\n  \"acceptTerms\": true,\n  \"displayName\": \"{{$randomFullName}}\",\n  \"primaryPhone\": \"+1234567890\",\n  \"companyName\": \"{{$randomCompanyName}}\",\n  \"preferredLanguage\": \"en\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/signup",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "signup"]
+						},
+						"description": "Register a new user account. Creates user profile, auth credentials, and initial session."
+					},
+					"response": []
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"const response = pm.response.json();",
+									"",
+									"if (response.requiresMfa) {",
+									"    pm.test('MFA is required', function () {",
+									"        pm.expect(response.requiresMfa).to.be.true;",
+									"    });",
+									"} else {",
+									"    pm.test('Response has session tokens', function () {",
+									"        pm.expect(response).to.have.property('session');",
+									"        pm.expect(response.session).to.have.property('accessToken');",
+									"    });",
+									"    ",
+									"    if (response.session) {",
+									"        pm.environment.set('accessToken', response.session.accessToken);",
+									"        pm.environment.set('refreshToken', response.session.refreshToken);",
+									"        ",
+									"        const expiryDate = new Date(Date.now() + (response.session.accessExpiresIn * 1000));",
+									"        pm.environment.set('tokenExpiry', expiryDate.toISOString());",
+									"    }",
+									"    ",
+									"    if (response.userId) {",
+									"        pm.environment.set('userId', response.userId);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePass123!\",\n  \"device\": {\n    \"name\": \"Postman Client\",\n    \"ip\": \"127.0.0.1\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "login"]
+						},
+						"description": "Login with email and password. Returns access and refresh tokens."
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"const response = pm.response.json();",
+									"",
+									"pm.test('New tokens received', function () {",
+									"    pm.expect(response).to.have.property('accessToken');",
+									"    pm.expect(response).to.have.property('refreshToken');",
+									"});",
+									"",
+									"pm.environment.set('accessToken', response.accessToken);",
+									"pm.environment.set('refreshToken', response.refreshToken);",
+									"",
+									"const expiryDate = new Date(Date.now() + (response.accessExpiresIn * 1000));",
+									"pm.environment.set('tokenExpiry', expiryDate.toISOString());"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refreshToken\": \"{{refreshToken}}\",\n  \"device\": {\n    \"name\": \"Postman Client\",\n    \"ip\": \"127.0.0.1\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/token/refresh",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "token", "refresh"]
+						},
+						"description": "Refresh access token using refresh token. Implements token rotation and reuse detection."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('User data returned', function () {",
+									"    const data = pm.response.json();",
+									"    pm.expect(data).to.have.property('userId');",
+									"    pm.expect(data).to.have.property('email');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "me"]
+						},
+						"description": "Get current authenticated user profile."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"Updated Name\",\n  \"primaryPhone\": \"+1987654321\",\n  \"companyName\": \"Updated Company\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "profile"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Setup 2FA",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"const response = pm.response.json();",
+									"if (response.secret) {",
+									"    pm.environment.set('mfaSecret', response.secret);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/2fa/setup",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "2fa", "setup"]
+						},
+						"description": "Setup two-factor authentication. Returns QR code and secret."
+					},
+					"response": []
+				},
+				{
+					"name": "Get 2FA Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/2fa/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "2fa", "status"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Change Password",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPassword\": \"SecurePass123!\",\n  \"newPassword\": \"NewSecurePass456!\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/password/change",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "password", "change"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/logout",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "logout"]
+						},
+						"description": "Logout current session."
+					},
+					"response": []
+				},
+				{
+					"name": "Logout All Sessions",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/logout-all",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "logout-all"]
+						},
+						"description": "Logout all active sessions for the user."
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints including signup, login, token refresh, MFA, and session management."
+		},
+		{
+			"name": "2. Escrow Lifecycle",
+			"item": [
+				{
+					"name": "Create Escrow",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"const response = pm.response.json();",
+									"if (response.id) {",
+									"    pm.environment.set('escrowId', response.id);",
+									"    console.log('Escrow ID:', response.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Generate a second user ID for the seller",
+									"// In real testing, this would be a different authenticated user",
+									"const sellerId = pm.variables.replaceIn('{{$guid}}');",
+									"pm.environment.set('sellerId', sellerId);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"buyerId\": \"{{userId}}\",\n  \"sellerId\": \"{{sellerId}}\",\n  \"amount\": 1000,\n  \"asset\": \"USDT\",\n  \"chain\": \"eth\",\n  \"description\": \"Purchase of premium widgets\",\n  \"feePaidBy\": \"buyer\",\n  \"terms\": \"Goods must be delivered within 7 days\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/escrows",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows"]
+						},
+						"description": "Create a new escrow transaction. Validates buyer balance and calculates platform fees."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Escrow by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Escrow data returned', function () {",
+									"    const data = pm.response.json();",
+									"    pm.expect(data).to.have.property('id');",
+									"    pm.expect(data).to.have.property('state');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}"]
+						},
+						"description": "Get escrow details by ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Get My Escrows",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Returns array of escrows', function () {",
+									"    const data = pm.response.json();",
+									"    pm.expect(data).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/escrows/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "me"]
+						},
+						"description": "Get all escrows for the current user (buyer or seller)."
+					},
+					"response": []
+				},
+				{
+					"name": "Accept Escrow",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"decision\": \"accept\",\n  \"message\": \"Agreed to terms\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}/accept",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}", "accept"]
+						},
+						"description": "Seller accepts the escrow agreement."
+					},
+					"response": []
+				},
+				{
+					"name": "Process Payment",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"transactionHash\": \"0x1234567890abcdef\",\n  \"amount\": 1000,\n  \"asset\": \"USDT\",\n  \"chain\": \"eth\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}/payment",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}", "payment"]
+						},
+						"description": "Record payment completion for escrow."
+					},
+					"response": []
+				},
+				{
+					"name": "Record Delivery",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"trackingNumber\": \"TRACK123456\",\n  \"carrier\": \"FedEx\",\n  \"notes\": \"Package shipped\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}/delivery",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}", "delivery"]
+						},
+						"description": "Seller records delivery information."
+					},
+					"response": []
+				},
+				{
+					"name": "Record Inspection",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"passed\",\n  \"notes\": \"Goods match description and are in perfect condition\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}/inspection",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}", "inspection"]
+						},
+						"description": "Buyer records inspection results."
+					},
+					"response": []
+				},
+				{
+					"name": "Complete Escrow",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}/complete",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}", "complete"]
+						},
+						"description": "Complete the escrow and release funds to seller."
+					},
+					"response": []
+				},
+				{
+					"name": "File Dispute",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const response = pm.response.json();",
+									"if (response.disputeId) {",
+									"    pm.environment.set('disputeId', response.disputeId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Goods not as described\",\n  \"description\": \"Item received does not match the listing description\",\n  \"evidence\": [\n    \"https://example.com/photo1.jpg\",\n    \"https://example.com/photo2.jpg\"\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}/dispute",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}", "dispute"]
+						},
+						"description": "File a dispute for the escrow."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Escrow",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Buyer request\",\n  \"notes\": \"Changed mind\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}", "cancel"]
+						},
+						"description": "Cancel the escrow before completion."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Escrow History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/escrows/{{escrowId}}/history?skip=0&take=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["escrows", "{{escrowId}}", "history"],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "take",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Get state transition history for an escrow."
+					},
+					"response": []
+				}
+			],
+			"description": "Complete escrow lifecycle from creation through completion or dispute."
+		},
+		{
+			"name": "3. Ledger & Transfers",
+			"item": [
+				{
+					"name": "Get Account Balance",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ledger/accounts/{{accountId}}/balance",
+							"host": ["{{baseUrl}}"],
+							"path": ["ledger", "accounts", "{{accountId}}", "balance"]
+						},
+						"description": "Get balance for a specific account."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Balances",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"const response = pm.response.json();",
+									"if (response.accounts && response.accounts.length > 0) {",
+									"    pm.environment.set('accountId', response.accounts[0].id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ledger/users/{{userId}}/balances",
+							"host": ["{{baseUrl}}"],
+							"path": ["ledger", "users", "{{userId}}", "balances"]
+						},
+						"description": "Get all account balances for a user."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Transfer",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"fromAccountId\": \"{{accountId}}\",\n  \"toAccountId\": \"{{toAccountId}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"description\": \"Payment for services\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ledger/transfers",
+							"host": ["{{baseUrl}}"],
+							"path": ["ledger", "transfers"]
+						},
+						"description": "Create a transfer between accounts."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Transfer by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ledger/transfers/{{transferId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["ledger", "transfers", "{{transferId}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Internal Transfer",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"fromUserId\": \"{{userId}}\",\n  \"toUserId\": \"{{toUserId}}\",\n  \"amount\": 50,\n  \"asset\": \"USDT\",\n  \"notes\": \"Friend payment\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ledger/internal/transfer",
+							"host": ["{{baseUrl}}"],
+							"path": ["ledger", "internal", "transfer"]
+						},
+						"description": "Create internal user-to-user transfer."
+					},
+					"response": []
+				},
+				{
+					"name": "Create External Transfer",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{userId}}\",\n  \"amount\": 200,\n  \"asset\": \"USDT\",\n  \"chain\": \"eth\",\n  \"toAddress\": \"0x1234567890123456789012345678901234567890\",\n  \"type\": \"withdrawal\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ledger/external/transfer",
+							"host": ["{{baseUrl}}"],
+							"path": ["ledger", "external", "transfer"]
+						},
+						"description": "Create external blockchain withdrawal."
+					},
+					"response": []
+				}
+			],
+			"description": "Ledger operations including balance checks and transfers."
+		},
+		{
+			"name": "4. Inquiry & Support",
+			"item": [
+				{
+					"name": "Create Inquiry",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const response = pm.response.json();",
+									"if (response.id) {",
+									"    pm.environment.set('inquiryId', response.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"escrowId\": \"{{escrowId}}\",\n  \"title\": \"Question about delivery\",\n  \"description\": \"When will the item be shipped?\",\n  \"priority\": \"medium\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inquiries",
+							"host": ["{{baseUrl}}"],
+							"path": ["inquiries"]
+						},
+						"description": "Create a support inquiry for an escrow."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Inquiry by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/inquiries/{{inquiryId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["inquiries", "{{inquiryId}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Inquiry by Escrow ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/inquiries/escrow/{{escrowId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["inquiries", "escrow", "{{escrowId}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Message to Inquiry",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"content\": \"This is a follow-up message with more details.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inquiries/{{inquiryId}}/messages",
+							"host": ["{{baseUrl}}"],
+							"path": ["inquiries", "{{inquiryId}}", "messages"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Inquiry Messages",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/inquiries/{{inquiryId}}/messages?page=1&limit=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["inquiries", "{{inquiryId}}", "messages"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Attachment",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inquiries/{{inquiryId}}/attachments/upload",
+							"host": ["{{baseUrl}}"],
+							"path": ["inquiries", "{{inquiryId}}", "attachments", "upload"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Attachments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/inquiries/{{inquiryId}}/attachments",
+							"host": ["{{baseUrl}}"],
+							"path": ["inquiries", "{{inquiryId}}", "attachments"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Close Inquiry",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resolution\": \"Issue resolved\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inquiries/{{inquiryId}}/close",
+							"host": ["{{baseUrl}}"],
+							"path": ["inquiries", "{{inquiryId}}", "close"]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Inquiry and support ticket management."
+		},
+		{
+			"name": "5. Notifications",
+			"item": [
+				{
+					"name": "Get My Notification Settings",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/notifications/settings",
+							"host": ["{{baseUrl}}"],
+							"path": ["notifications", "settings"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Notification Settings",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"emailEnabled\": true,\n  \"escrowCreated\": true,\n  \"escrowAccepted\": true,\n  \"escrowCompleted\": true,\n  \"escrowDisputed\": true,\n  \"inquiryMessages\": true,\n  \"paymentReceived\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/notifications/settings",
+							"host": ["{{baseUrl}}"],
+							"path": ["notifications", "settings"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Notification History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/notifications/user/{{userId}}?page=1&limit=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["notifications", "user", "{{userId}}"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Notification preferences and history."
+		},
+		{
+			"name": "6. KYC & Compliance",
+			"item": [
+				{
+					"name": "Start KYC Process",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"redirectUrl\": \"https://app.example.com/kyc/callback\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/kyc/start",
+							"host": ["{{baseUrl}}"],
+							"path": ["kyc", "start"]
+						},
+						"description": "Start KYC verification process with Persona."
+					},
+					"response": []
+				},
+				{
+					"name": "Get KYC Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/kyc/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["kyc", "status"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Limits",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/limits",
+							"host": ["{{baseUrl}}"],
+							"path": ["limits"]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "KYC verification and compliance limits."
+		},
+		{
+			"name": "7. Admin Operations",
+			"item": [
+				{
+					"name": "Escrow Admin",
+					"item": [
+						{
+							"name": "Get All Escrows (Admin)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/admin/escrows/all?skip=0&take=50",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "escrows", "all"],
+									"query": [
+										{
+											"key": "skip",
+											"value": "0"
+										},
+										{
+											"key": "take",
+											"value": "50"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Platform Statistics",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/admin/escrows/statistics",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "escrows", "statistics"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get User Escrows (Admin)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/admin/escrows/user/{{userId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "escrows", "user", "{{userId}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Resolve Dispute",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"outcome\": \"release_to_seller\",\n  \"notes\": \"Evidence supports seller's claim\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/escrows/{{escrowId}}/resolve",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "escrows", "{{escrowId}}", "resolve"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Force Close Escrow",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"reason\": \"Fraud detected\",\n  \"action\": \"refund_buyer\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/escrows/{{escrowId}}/force-close",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "escrows", "{{escrowId}}", "force-close"]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Inquiry Admin",
+					"item": [
+						{
+							"name": "List All Inquiries",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/admin/inquiries?page=1&limit=50&status=open",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "inquiries"],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "50"
+										},
+										{
+											"key": "status",
+											"value": "open"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Inquiry Detail (Admin)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/admin/inquiries/{{inquiryId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "inquiries", "{{inquiryId}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Assign Inquiry to Admin",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"adminId\": \"{{adminUserId}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/inquiries/{{inquiryId}}/assign",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "inquiries", "{{inquiryId}}", "assign"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Resolve Inquiry",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resolution\": \"Issue addressed by contacting seller\",\n  \"internalNotes\": \"Seller agreed to expedite shipping\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/inquiries/{{inquiryId}}/resolve",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "inquiries", "{{inquiryId}}", "resolve"]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Notification Admin",
+					"item": [
+						{
+							"name": "Get User Settings (Admin)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/notifications/settings/{{userId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["notifications", "settings", "{{userId}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update User Settings (Admin)",
+							"request": {
+								"method": "PUT",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"emailEnabled\": false\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/notifications/settings/{{userId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["notifications", "settings", "{{userId}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Query Notification Logs",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/notifications/admin/logs?page=1&limit=50&userId={{userId}}&status=sent",
+									"host": ["{{baseUrl}}"],
+									"path": ["notifications", "admin", "logs"],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "50"
+										},
+										{
+											"key": "userId",
+											"value": "{{userId}}"
+										},
+										{
+											"key": "status",
+											"value": "sent"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Send Test Email",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"to\": \"test@example.com\",\n  \"subject\": \"Test Email\",\n  \"body\": \"This is a test email\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/notifications/test-send",
+									"host": ["{{baseUrl}}"],
+									"path": ["notifications", "test-send"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retry Failed Notification",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/notifications/retry/{{notificationId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["notifications", "retry", "{{notificationId}}"]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Blog Management",
+					"item": [
+						{
+							"name": "Get All Blogs",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/admin/blogs?page=1&limit=20&published=true",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "blogs"],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "20"
+										},
+										{
+											"key": "published",
+											"value": "true"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Create Blog Post",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"title\": \"Understanding Escrow Services\",\n  \"slug\": \"understanding-escrow-services\",\n  \"content\": \"<p>Content here...</p>\",\n  \"excerpt\": \"Learn about escrow services\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"published\": true,\n  \"featuredImage\": \"https://example.com/image.jpg\",\n  \"tags\": [\"escrow\", \"tutorial\"]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/blogs",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "blogs"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Blog by Slug",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/admin/blogs/slug/understanding-escrow-services",
+									"host": ["{{baseUrl}}"],
+									"path": ["admin", "blogs", "slug", "understanding-escrow-services"]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			],
+			"description": "Admin operations for managing escrows, inquiries, users, and content."
+		},
+		{
+			"name": "8. Health Checks",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Check if the service is healthy."
+					},
+					"response": []
+				},
+				{
+					"name": "Readiness Check",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health/ready",
+							"host": ["{{baseUrl}}"],
+							"path": ["health", "ready"]
+						},
+						"description": "Check if the service is ready to accept requests."
+					},
+					"response": []
+				}
+			],
+			"description": "Service health and readiness endpoints."
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3001/api/v1",
+			"type": "string"
+		}
+	]
+}

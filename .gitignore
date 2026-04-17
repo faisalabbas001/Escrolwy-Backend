@@ -40,9 +40,14 @@ lerna-debug.log*
 coverage/
 .nyc_output
 
-# Prisma
-prisma/migrations/
-!prisma/migrations/.gitkeep
+# Prisma generated client (stays within each service)
+**/generated/prisma/
+
+# Prisma cache
+**/.cache/
+
+# Prisma migrations are tracked in git
+# !prisma/migrations/.gitkeep
 
 # Temporary files
 *.tmp

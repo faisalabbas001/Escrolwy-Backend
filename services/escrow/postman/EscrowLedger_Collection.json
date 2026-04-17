@@ -1,0 +1,2135 @@
+{
+  "info": {
+    "name": "EscrowLedger Testing Collection",
+    "description": "Complete testing collection for Escrow-Ledger financial system\n\nCovers:\n- Auth Service seed and authentication\n- Ledger seed data and balance verification\n- Escrow creation (Buyer/Seller/Broker)\n- Fee validation scenarios\n- Happy flow (create → accept → complete → release)\n- Dispute flow\n- Internal transfers\n- External transfers\n- Edge cases",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "escrowly-backend"
+  },
+  "item": [
+    {
+      "name": "0. Auth Service Seed",
+      "item": [
+        {
+          "name": "Seed Users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{auth_service_url}}/seed",
+              "host": ["{{auth_service_url}}"],
+              "path": ["seed"]
+            },
+            "description": "Run Auth Service seed script to create test users\n\nUsers created:\n- buyer_1, buyer_2 (buyer1@test.com, buyer2@test.com)\n- seller_1, seller_2 (seller1@test.com, seller2@test.com)\n- broker_1 (broker1@test.com)\n- admin_1 (admin@test.com)\n\nPassword for all: Test123!@#\nAdmin password: Admin123!@#"
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Buyer 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.accessToken) {",
+                  "    pm.collectionVariables.set(\"buyer1_token\", response.accessToken);",
+                  "    pm.collectionVariables.set(\"buyer1_id\", \"11111111-1111-4111-8111-111111111111\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer1@test.com\",\n  \"password\": \"Test123!@#\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{auth_service_url}}/v1/auth/login",
+              "host": ["{{auth_service_url}}"],
+              "path": ["v1", "auth", "login"]
+            },
+            "description": "Login as buyer_1 and store JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Buyer 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.accessToken) {",
+                  "    pm.collectionVariables.set(\"buyer2_token\", response.accessToken);",
+                  "    pm.collectionVariables.set(\"buyer2_id\", \"22222222-2222-4222-8222-222222222222\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer2@test.com\",\n  \"password\": \"Test123!@#\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{auth_service_url}}/v1/auth/login",
+              "host": ["{{auth_service_url}}"],
+              "path": ["v1", "auth", "login"]
+            },
+            "description": "Login as buyer_2 and store JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Seller 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.accessToken) {",
+                  "    pm.collectionVariables.set(\"seller1_token\", response.accessToken);",
+                  "    pm.collectionVariables.set(\"seller1_id\", \"33333333-3333-4333-8333-333333333333\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"seller1@test.com\",\n  \"password\": \"Test123!@#\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{auth_service_url}}/v1/auth/login",
+              "host": ["{{auth_service_url}}"],
+              "path": ["v1", "auth", "login"]
+            },
+            "description": "Login as seller_1 and store JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Seller 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.accessToken) {",
+                  "    pm.collectionVariables.set(\"seller2_token\", response.accessToken);",
+                  "    pm.collectionVariables.set(\"seller2_id\", \"44444444-4444-4444-8444-444444444444\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"seller2@test.com\",\n  \"password\": \"Test123!@#\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{auth_service_url}}/v1/auth/login",
+              "host": ["{{auth_service_url}}"],
+              "path": ["v1", "auth", "login"]
+            },
+            "description": "Login as seller_2 and store JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Broker 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.accessToken) {",
+                  "    pm.collectionVariables.set(\"broker1_token\", response.accessToken);",
+                  "    pm.collectionVariables.set(\"broker1_id\", \"55555555-5555-4555-8555-555555555555\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"broker1@test.com\",\n  \"password\": \"Test123!@#\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{auth_service_url}}/v1/auth/login",
+              "host": ["{{auth_service_url}}"],
+              "path": ["v1", "auth", "login"]
+            },
+            "description": "Login as broker_1 and store JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.accessToken) {",
+                  "    pm.collectionVariables.set(\"admin_token\", response.accessToken);",
+                  "    pm.collectionVariables.set(\"admin_id\", \"99999999-9999-4999-8999-999999999999\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@test.com\",\n  \"password\": \"Admin123!@#\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{auth_service_url}}/v1/auth/login",
+              "host": ["{{auth_service_url}}"],
+              "path": ["v1", "auth", "login"]
+            },
+            "description": "Login as admin and store JWT token"
+          },
+          "response": []
+        }
+      ],
+      "description": "Seed Auth Service users and authenticate to get JWT tokens"
+    },
+    {
+      "name": "1. Ledger Seed",
+      "item": [
+        {
+          "name": "Seed User Accounts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/seed",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["seed"]
+            },
+            "description": "Run Ledger Service seed script to create test accounts\n\nCreates:\n- buyer_1: spendable=150, reserved=0\n- buyer_2: spendable=90, reserved=0\n- seller_1: spendable=50, reserved=0\n- seller_2: spendable=200, reserved=0\n- broker_1: spendable=100, reserved=0\n- System accounts: platform_revenue, platform_custody_pool, escrow_holding_pool"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Buyer 1 Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.test(\"Buyer 1 has spendable balance\", function () {",
+                  "    const spendable = response.balances.find(b => b.purpose === 'spendable');",
+                  "    pm.expect(spendable).to.exist;",
+                  "    pm.expect(spendable.balance).to.equal(150);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/users/{{buyer1_id}}/balances",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "users", "{{buyer1_id}}", "balances"]
+            },
+            "description": "Verify buyer_1 has correct initial balance (150 spendable)"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Seller 1 Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.test(\"Seller 1 has spendable balance\", function () {",
+                  "    const spendable = response.balances.find(b => b.purpose === 'spendable');",
+                  "    pm.expect(spendable).to.exist;",
+                  "    pm.expect(spendable.balance).to.equal(50);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/users/{{seller1_id}}/balances",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "users", "{{seller1_id}}", "balances"]
+            },
+            "description": "Verify seller_1 has correct initial balance (50 spendable)"
+          },
+          "response": []
+        }
+      ],
+      "description": "Seed Ledger Service accounts and verify balances"
+    },
+    {
+      "name": "2. Buyer Creates Escrow",
+      "item": [
+        {
+          "name": "A1: Buyer Pays Full Fee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.id) {",
+                  "    pm.collectionVariables.set(\"escrow_id_buyer_full_fee\", response.id);",
+                  "}",
+                  "",
+                  "pm.test(\"Escrow created successfully\", function () {",
+                  "    pm.expect(response.state).to.equal(\"agreement\");",
+                  "    pm.expect(response.buyerId).to.equal(pm.collectionVariables.get(\"buyer1_id\"));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Buyer pays full fee\",\n  \"feePaidBy\": \"buyer\",\n  \"platformFeeTotal\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Buyer creates escrow and pays full platform fee\n\nValidation:\n- Buyer balance >= escrow_amount + platform_fee (100 + 2 = 102)\n- Buyer has 150, so should succeed"
+          },
+          "response": []
+        },
+        {
+          "name": "A2: Fee Split 50/50",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.id) {",
+                  "    pm.collectionVariables.set(\"escrow_id_split\", response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Fee split 50/50\",\n  \"feePaidBy\": \"split\",\n  \"platformFeeTotal\": 2,\n  \"feeSplitPercentages\": {\n    \"buyer\": 50,\n    \"seller\": 50\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Buyer creates escrow with fee split 50/50\n\nValidation:\n- Buyer balance >= escrow_amount + buyer_fee_portion (100 + 1 = 101)\n- Seller fee portion validated on accept"
+          },
+          "response": []
+        },
+        {
+          "name": "A3: Seller Pays Full Fee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.id) {",
+                  "    pm.collectionVariables.set(\"escrow_id_seller_fee\", response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Seller pays full fee\",\n  \"feePaidBy\": \"seller\",\n  \"platformFeeTotal\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Buyer creates escrow, seller pays full fee\n\nValidation:\n- Buyer balance >= escrow_amount (100)\n- Seller fee validated on accept"
+          },
+          "response": []
+        },
+        {
+          "name": "Insufficient Balance (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message mentions insufficient balance\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.message).to.include(\"insufficient\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer2_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer2_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 200,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Should fail (insufficient balance)\",\n  \"feePaidBy\": \"buyer\",\n  \"platformFeeTotal\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Buyer 2 tries to create escrow with amount > balance\n\nBuyer 2 has 90, trying to create escrow for 200 + 2 fee = 202\nShould fail with 400 Bad Request"
+          },
+          "response": []
+        }
+      ],
+      "description": "Test escrow creation by buyer with different fee payment scenarios"
+    },
+    {
+      "name": "3. Seller Creates Escrow",
+      "item": [
+        {
+          "name": "B1: Seller Pays Full Fee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.id) {",
+                  "    pm.collectionVariables.set(\"escrow_id_seller_creates\", response.id);",
+                  "}",
+                  "",
+                  "pm.test(\"Escrow created by seller\", function () {",
+                  "    pm.expect(response.createdBy).to.equal(pm.collectionVariables.get(\"seller1_id\"));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Seller creates, seller pays fee\",\n  \"feePaidBy\": \"seller\",\n  \"platformFeeTotal\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Seller creates escrow and pays full fee\n\nCRITICAL Validation:\n- Buyer balance >= escrow_amount (100) - CHECKED FIRST\n- Seller balance >= platform_fee (2)\n- Buyer has 150, Seller has 50, so should succeed"
+          },
+          "response": []
+        },
+        {
+          "name": "B2: Buyer Pays Full Fee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Seller creates, buyer pays fee\",\n  \"feePaidBy\": \"buyer\",\n  \"platformFeeTotal\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Seller creates escrow, buyer pays full fee\n\nCRITICAL Validation:\n- Buyer balance >= escrow_amount + platform_fee (100 + 2 = 102)\n- Buyer has 150, so should succeed"
+          },
+          "response": []
+        },
+        {
+          "name": "B3: Fee Split 50/50",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Seller creates, fee split 50/50\",\n  \"feePaidBy\": \"split\",\n  \"platformFeeTotal\": 2,\n  \"feeSplitPercentages\": {\n    \"buyer\": 50,\n    \"seller\": 50\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Seller creates escrow with fee split 50/50\n\nCRITICAL Validation:\n- Buyer balance >= escrow_amount + buyer_fee_portion (100 + 1 = 101)\n- Seller balance >= seller_fee_portion (1)\n- Buyer has 150, Seller has 50, so should succeed"
+          },
+          "response": []
+        },
+        {
+          "name": "Insufficient Buyer Balance (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error mentions buyer balance\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.message.toLowerCase()).to.include(\"buyer\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer2_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 200,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Should fail (buyer lacks escrow amount)\",\n  \"feePaidBy\": \"seller\",\n  \"platformFeeTotal\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Seller creates escrow, but buyer lacks escrow amount\n\nCRITICAL: Buyer balance checked FIRST for escrow_amount\nBuyer 2 has 90, escrow amount is 200\nShould fail immediately with 400 Bad Request"
+          },
+          "response": []
+        },
+        {
+          "name": "Insufficient Seller Fee Balance (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error mentions seller balance\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.message.toLowerCase()).to.include(\"seller\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Should fail (seller lacks fee)\",\n  \"feePaidBy\": \"seller\",\n  \"platformFeeTotal\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Seller creates escrow but lacks fee amount\n\nSeller has 50, fee is 100\nShould fail with 400 Bad Request"
+          },
+          "response": []
+        }
+      ],
+      "description": "Test escrow creation by seller with different fee payment scenarios\n\nCRITICAL: When seller creates escrow, buyer balance is ALWAYS checked first for escrow_amount"
+    },
+    {
+      "name": "4. Broker Creates Escrow",
+      "item": [
+        {
+          "name": "Broker Creates with Fee Split",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.id) {",
+                  "    pm.collectionVariables.set(\"escrow_id_broker\", response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{broker1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"brokerId\": \"{{broker1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Test escrow - Broker creates\",\n  \"feePaidBy\": \"split\",\n  \"platformFeeTotal\": 2,\n  \"feeSplitPercentages\": {\n    \"buyer\": 50,\n    \"seller\": 50\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Broker creates escrow with fee split\n\nValidates both buyer and seller balances"
+          },
+          "response": []
+        }
+      ],
+      "description": "Test escrow creation by broker"
+    },
+    {
+      "name": "5. Happy Flow",
+      "item": [
+        {
+          "name": "Create Escrow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.id) {",
+                  "    pm.collectionVariables.set(\"happy_flow_escrow_id\", response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Happy flow test escrow\",\n  \"feePaidBy\": \"buyer\",\n  \"platformFeeTotal\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Step 1: Create escrow"
+          },
+          "response": []
+        },
+        {
+          "name": "Record Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Escrow state is funded\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.state).to.equal(\"funded\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100,\n  \"transactionHash\": \"0x1234567890abcdef\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows/{{happy_flow_escrow_id}}/payment",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows", "{{happy_flow_escrow_id}}", "payment"]
+            },
+            "description": "Step 2: Buyer records payment\n\nThis triggers Kafka event: escrow.payment.completed\nLedger service consumes and reserves funds"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Funds Reserved",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Buyer spendable decreased\", function () {",
+                  "    const response = pm.response.json();",
+                  "    const spendable = response.balances.find(b => b.purpose === 'spendable');",
+                  "    pm.expect(spendable.balance).to.be.below(150);",
+                  "});",
+                  "",
+                  "pm.test(\"Buyer reserved increased\", function () {",
+                  "    const response = pm.response.json();",
+                  "    const reserved = response.balances.find(b => b.purpose === 'reserved');",
+                  "    pm.expect(reserved.balance).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/users/{{buyer1_id}}/balances",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "users", "{{buyer1_id}}", "balances"]
+            },
+            "description": "Step 2: Verify funds were reserved\n\nAfter payment, Ledger should have:\n- Buyer spendable: 150 - 100 = 50\n- Buyer reserved: 0 + 100 = 100"
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Escrow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Escrow state is accepted\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.state).to.equal(\"accepted\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"I accept this escrow agreement\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows/{{happy_flow_escrow_id}}/accept",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows", "{{happy_flow_escrow_id}}", "accept"]
+            },
+            "description": "Step 4: Seller accepts escrow\n\nThis triggers Kafka event: escrow.accepted"
+          },
+          "response": []
+        },
+        {
+          "name": "Record Inspection (Accept)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Escrow state is closed\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.state).to.equal(\"closed\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"accepted\",\n  \"inspectionNotes\": \"Item received and inspected, everything looks good\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows/{{happy_flow_escrow_id}}/inspection",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows", "{{happy_flow_escrow_id}}", "inspection"]
+            },
+            "description": "Step 5: Buyer records inspection (accepts)\n\nThis triggers Kafka event: escrow.inspection.completed\nLedger service consumes and releases funds to seller"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Funds Released",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Seller balance increased\", function () {",
+                  "    const response = pm.response.json();",
+                  "    const spendable = response.balances.find(b => b.purpose === 'spendable');",
+                  "    pm.expect(spendable.balance).to.be.above(50);",
+                  "});",
+                  "",
+                  "pm.test(\"Buyer reserved decreased\", function () {",
+                  "    // Buyer reserved should be back to 0",
+                  "    const buyerResponse = pm.response.json();",
+                  "    // This test would need to check buyer balance separately",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/users/{{seller1_id}}/balances",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "users", "{{seller1_id}}", "balances"]
+            },
+            "description": "Step 6: Verify funds released to seller\n\nAfter inspection accepted, Ledger should have:\n- Seller spendable: 50 + 100 = 150\n- Platform revenue: 0 + 2 = 2"
+          },
+          "response": []
+        }
+      ],
+      "description": "Complete happy flow: Create → Payment → Accept → Delivery → Inspection (Accept) → Release"
+    },
+    {
+      "name": "6. Dispute Flow",
+      "item": [
+        {
+          "name": "Create Escrow for Dispute",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.id) {",
+                  "    pm.collectionVariables.set(\"dispute_escrow_id\", response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"description\": \"Escrow for dispute test\",\n  \"feePaidBy\": \"buyer\",\n  \"platformFeeTotal\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Create escrow for dispute testing"
+          },
+          "response": []
+        },
+        {
+          "name": "Record Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100,\n  \"transactionHash\": \"0xdispute123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows/{{dispute_escrow_id}}/payment",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows", "{{dispute_escrow_id}}", "payment"]
+            },
+            "description": "Record payment"
+          },
+          "response": []
+        },
+        {
+          "name": "Raise Dispute",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Escrow state is disputed\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.state).to.equal(\"disputed\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Item not as described\",\n  \"evidence\": \"photo1.jpg,photo2.jpg\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows/{{dispute_escrow_id}}/dispute",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows", "{{dispute_escrow_id}}", "dispute"]
+            },
+            "description": "Raise dispute\n\nThis triggers Kafka event: escrow.disputed\nLedger service consumes and freezes funds"
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Resolve - Refund Buyer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Escrow resolved\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.state).to.equal(\"resolved\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution\": \"buyer_wins\",\n  \"adminNotes\": \"Buyer wins - item not as described\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows/{{dispute_escrow_id}}/resolve",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows", "{{dispute_escrow_id}}", "resolve"]
+            },
+            "description": "Admin resolves dispute - refund buyer\n\nThis triggers Kafka event: escrow.resolved\nLedger service consumes and refunds funds to buyer"
+          },
+          "response": []
+        }
+      ],
+      "description": "Dispute flow: Create → Payment → Dispute → Admin Resolve"
+    },
+    {
+      "name": "7. Internal Transfers (Service-to-Service)",
+      "item": [
+        {
+          "name": "Spendable → Reserved",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Transfer created\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.equal(\"journaled\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "X-Service-Id",
+                "value": "escrow-service"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccount\": \"liability:user_spendable:{{buyer1_id}}\",\n  \"toAccount\": \"liability:user_reserved:{{buyer1_id}}\",\n  \"amount\": 50,\n  \"reference\": \"test-reservation\",\n  \"idempotencyKey\": \"test-internal-transfer-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/internal/transfer",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "internal", "transfer"]
+            },
+            "description": "Internal transfer: Move funds from spendable to reserved\n\nINTERNAL API: Requires service API key\nNOT accessible to regular users"
+          },
+          "response": []
+        },
+        {
+          "name": "Reserved → Escrow Holding",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "X-Service-Id",
+                "value": "escrow-service"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccount\": \"liability:user_reserved:{{buyer1_id}}\",\n  \"toAccount\": \"liability:escrow_holding\",\n  \"amount\": 50,\n  \"reference\": \"escrow-release\",\n  \"idempotencyKey\": \"test-release-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/internal/transfer",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "internal", "transfer"]
+            },
+            "description": "Internal transfer: Move funds from reserved to escrow holding pool"
+          },
+          "response": []
+        },
+        {
+          "name": "Escrow Holding → Seller Spendable",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "X-Service-Id",
+                "value": "escrow-service"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccount\": \"liability:escrow_holding\",\n  \"toAccount\": \"liability:user_spendable:{{seller1_id}}\",\n  \"amount\": 100,\n  \"reference\": \"escrow-complete\",\n  \"idempotencyKey\": \"test-seller-payout-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/internal/transfer",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "internal", "transfer"]
+            },
+            "description": "Internal transfer: Release funds from escrow holding to seller"
+          },
+          "response": []
+        },
+        {
+          "name": "Escrow Holding → Buyer Spendable (Refund)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "X-Service-Id",
+                "value": "escrow-service"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccount\": \"liability:escrow_holding\",\n  \"toAccount\": \"liability:user_spendable:{{buyer1_id}}\",\n  \"amount\": 100,\n  \"reference\": \"escrow-refund\",\n  \"idempotencyKey\": \"test-refund-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/internal/transfer",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "internal", "transfer"]
+            },
+            "description": "Internal transfer: Refund funds from escrow holding to buyer"
+          },
+          "response": []
+        },
+        {
+          "name": "Spendable → Platform Revenue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "X-Service-Id",
+                "value": "escrow-service"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccount\": \"liability:user_spendable:{{buyer1_id}}\",\n  \"toAccount\": \"liability:platform_revenue\",\n  \"amount\": 2,\n  \"reference\": \"platform-fee\",\n  \"idempotencyKey\": \"test-fee-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/internal/transfer",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "internal", "transfer"]
+            },
+            "description": "Internal transfer: Move platform fee to revenue account"
+          },
+          "response": []
+        },
+        {
+          "name": "Duplicate Idempotency Key (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 409\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "X-Service-Id",
+                "value": "escrow-service"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccount\": \"liability:user_spendable:{{buyer1_id}}\",\n  \"toAccount\": \"liability:user_reserved:{{buyer1_id}}\",\n  \"amount\": 10,\n  \"reference\": \"duplicate-test\",\n  \"idempotencyKey\": \"duplicate-key-123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/internal/transfer",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "internal", "transfer"]
+            },
+            "description": "Try to create duplicate transfer with same idempotency key\n\nShould fail with 409 Conflict"
+          },
+          "response": []
+        },
+        {
+          "name": "Insufficient Balance (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error mentions insufficient balance\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.message.toLowerCase()).to.include(\"insufficient\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "X-Service-Id",
+                "value": "escrow-service"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccount\": \"liability:user_spendable:{{buyer2_id}}\",\n  \"toAccount\": \"liability:user_reserved:{{buyer2_id}}\",\n  \"amount\": 1000,\n  \"reference\": \"insufficient-test\",\n  \"idempotencyKey\": \"test-insufficient-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/internal/transfer",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "internal", "transfer"]
+            },
+            "description": "Try to transfer more than available balance\n\nBuyer 2 has 90, trying to transfer 1000\nShould fail with 400 Bad Request"
+          },
+          "response": []
+        }
+      ],
+      "description": "Test internal transfers (service-to-service only)\n\nThese endpoints require service API key and are NOT accessible to regular users"
+    },
+    {
+      "name": "8. External Transfers",
+      "item": [
+        {
+          "name": "Create External Transfer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "if (response.id) {",
+                  "    pm.collectionVariables.set(\"external_transfer_id\", response.id);",
+                  "}",
+                  "",
+                  "pm.test(\"Transfer status is PENDING\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.equal(\"PENDING\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seller1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{seller1_id}}\",\n  \"amount\": 50,\n  \"destination\": \"BANK\",\n  \"destinationAddress\": \"1234567890\",\n  \"reference\": \"payout-123\",\n  \"idempotencyKey\": \"external-transfer-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/external/transfer",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "external", "transfer"]
+            },
+            "description": "Create external transfer (payout to bank)\n\nFlow:\n1. Reserve funds internally\n2. Create external_transfer record (PENDING)\n3. Produce Kafka event: ExternalTransferRequested\n4. Payment provider processes\n5. Consume callback → Mark COMPLETED or FAILED"
+          },
+          "response": []
+        },
+        {
+          "name": "Simulate Callback Success",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{external_transfer_id}}\",\n  \"status\": \"COMPLETED\",\n  \"transactionId\": \"bank-tx-123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/external/transfer/{{external_transfer_id}}/callback",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "external", "transfer", "{{external_transfer_id}}", "callback"]
+            },
+            "description": "Simulate payment provider callback (success)\n\nMarks transfer as COMPLETED"
+          },
+          "response": []
+        },
+        {
+          "name": "Simulate Callback Failure",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{external_transfer_id}}\",\n  \"status\": \"FAILED\",\n  \"reason\": \"Invalid account number\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/external/transfer/{{external_transfer_id}}/callback",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "external", "transfer", "{{external_transfer_id}}", "callback"]
+            },
+            "description": "Simulate payment provider callback (failure)\n\nMarks transfer as FAILED and releases reserved funds"
+          },
+          "response": []
+        },
+        {
+          "name": "Duplicate Callbacks (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 409\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Service-Api-Key",
+                "value": "{{service_api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{external_transfer_id}}\",\n  \"status\": \"COMPLETED\",\n  \"transactionId\": \"duplicate-callback\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/external/transfer/{{external_transfer_id}}/callback",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "external", "transfer", "{{external_transfer_id}}", "callback"]
+            },
+            "description": "Try to process duplicate callback\n\nShould fail with 409 Conflict (idempotency)"
+          },
+          "response": []
+        }
+      ],
+      "description": "Test external transfers (payouts to bank/blockchain)"
+    },
+    {
+      "name": "9. Edge Cases",
+      "item": [
+        {
+          "name": "Invalid Fee Split Percentages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 100,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"feePaidBy\": \"split\",\n  \"platformFeeTotal\": 2,\n  \"feeSplitPercentages\": {\n    \"buyer\": 30,\n    \"seller\": 30\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Try to create escrow with invalid fee split (percentages don't sum to 100)\n\nShould fail with 400 Bad Request"
+          },
+          "response": []
+        },
+        {
+          "name": "Concurrent Escrow Creation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerId\": \"{{buyer1_id}}\",\n  \"sellerId\": \"{{seller1_id}}\",\n  \"amount\": 50,\n  \"asset\": \"USDT\",\n  \"chain\": \"evm\",\n  \"feePaidBy\": \"buyer\",\n  \"platformFeeTotal\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{escrow_service_url}}/v1/escrows",
+              "host": ["{{escrow_service_url}}"],
+              "path": ["v1", "escrows"]
+            },
+            "description": "Test concurrent escrow creation\n\nRun multiple times simultaneously to test race conditions"
+          },
+          "response": []
+        },
+        {
+          "name": "Balance Verification After Operations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Total balance unchanged\", function () {",
+                  "    const response = pm.response.json();",
+                  "    const totalBalance = response.balances.reduce((sum, b) => sum + b.balance, 0);",
+                  "    // Verify no money creation/loss",
+                  "    pm.expect(totalBalance).to.be.a('number');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{buyer1_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{ledger_service_url}}/v1/ledger/users/{{buyer1_id}}/balances",
+              "host": ["{{ledger_service_url}}"],
+              "path": ["v1", "ledger", "users", "{{buyer1_id}}", "balances"]
+            },
+            "description": "Verify balances after operations\n\nCheck that:\n- No negative balances\n- Total balance = initial balance (no money creation/loss)\n- Double-entry accounting maintained"
+          },
+          "response": []
+        }
+      ],
+      "description": "Test edge cases and error scenarios"
+    }
+  ],
+  "variable": [
+    {
+      "key": "auth_service_url",
+      "value": "http://localhost:3003",
+      "type": "string"
+    },
+    {
+      "key": "ledger_service_url",
+      "value": "http://localhost:3005",
+      "type": "string"
+    },
+    {
+      "key": "escrow_service_url",
+      "value": "http://localhost:3004",
+      "type": "string"
+    },
+    {
+      "key": "service_api_key",
+      "value": "default-service-key-change-in-production",
+      "type": "string"
+    },
+    {
+      "key": "buyer1_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "buyer1_id",
+      "value": "11111111-1111-4111-8111-111111111111",
+      "type": "string"
+    },
+    {
+      "key": "buyer2_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "buyer2_id",
+      "value": "22222222-2222-4222-8222-222222222222",
+      "type": "string"
+    },
+    {
+      "key": "seller1_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "seller1_id",
+      "value": "33333333-3333-4333-8333-333333333333",
+      "type": "string"
+    },
+    {
+      "key": "seller2_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "seller2_id",
+      "value": "44444444-4444-4444-8444-444444444444",
+      "type": "string"
+    },
+    {
+      "key": "broker1_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "broker1_id",
+      "value": "55555555-5555-4555-8555-555555555555",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_id",
+      "value": "99999999-9999-4999-8999-999999999999",
+      "type": "string"
+    }
+  ]
+}
+

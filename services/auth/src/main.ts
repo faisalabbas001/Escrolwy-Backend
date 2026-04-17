@@ -24,14 +24,21 @@ async function bootstrap() {
 
   // Get configuration service
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3001);
+  const port = configService.get<number>('PORT', 3002);
   const serviceName = configService.get<string>('SERVICE_NAME', 'auth-service');
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
 
-  // Enable CORS
+  // Enable CORS - Allow all origins for development/testing
   app.enableCors({
-    origin: true, // In production, specify allowed origins
-    credentials: true,
+    origin: '*',
+    credentials: false, // Must be false when origin is '*'
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'X-Requested-With',
+    ],
   });
 
   // Global API prefix
@@ -93,6 +100,7 @@ async function bootstrap() {
 
   // Start the application
   await app.listen(port);
+  
 
   logger.log(`🚀 ${serviceName} is running on: http://localhost:${port}/api`);
   logger.log(`🌍 Environment: ${nodeEnv}`);

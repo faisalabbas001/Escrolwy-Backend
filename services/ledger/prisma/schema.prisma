@@ -1,0 +1,151 @@
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+    schemas  = ["ledger_db"]
+}
+
+generator client {
+    provider = "prisma-client-js"
+    output   = "../../../generated/prisma"
+}
+
+/// Where money lives - Balance buckets (spendable, reserved, treasury, fees)
+model Account {
+    id        String   @id @default(uuid())
+    ownerType String // user / platform
+    ownerId   String? // User ID or NULL for platform accounts
+    purpose   String // spendable / reserved / fees / treasury_hot
+    asset     String // USDT, USDC, etc.
+    chain     String // eth, bnb, poly, sol, trc
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    entries Entry[]
+
+    @@unique([ownerType, ownerId, asset, chain, purpose])
+    @@index([ownerType, ownerId])
+    @@index([asset, chain])
+    @@map("accounts")
+    @@schema("ledger_db")
+}
+
+/// Transfer intent - Represents API-level transfer request BEFORE journal is created
+model Transfer {
+    id                 String   @id @default(uuid())
+    type               String // internal / external / escrow_released
+    asset              String // USDT, USDC, etc.
+    amount             Decimal  @db.Decimal(18, 6)
+    chain              String // Source chain
+    senderId           String // Authenticated user
+    destinationUserId  String? // Internal receiver (for internal transfers)
+    destinationAddress String?  @db.Text // External wallet (for external transfers)
+    destinationChain   String // Target chain
+    status             String   @default("pending") // pending / process / failed / completed
+    failureReason      String?  @db.Text // Insufficient balance, blocked, etc.
+    idempotencyKey     String?  @unique // Prevent duplicates
+    createdAt          DateTime @default(now())
+    updatedAt          DateTime @updatedAt
+
+    journals Journal[]
+
+    @@index([senderId])
+    @@index([status])
+    @@index([idempotencyKey])
+    @@index([createdAt])
+    @@map("transfers")
+    @@schema("ledger_db")
+}
+
+/// Why money moved - Created ONLY after validation succeeds
+/// Supported journal types:
+/// - internal_transfer: Internal transfers between users/platform accounts
+/// - external_transfer: External transfers to blockchain addresses
+/// - deposit: User deposits into Escrowly (transferId is null - no transfer record)
+/// - escrow_pay_reserved: Funds reserved for escrow (user spendable → platform escrow holding)
+/// - escrow_pay_released: Funds released to seller (platform escrow holding → seller spendable)
+/// - escrow_pay_released_buyer: Funds refunded to buyer (platform escrow holding → buyer spendable)
+/// - escrow_pay_split: Split payout for dispute resolution (platform escrow holding → buyer + seller)
+/// - platform_fee: Platform fee collection (user spendable → platform fees)
+model Journal {
+    id             String   @id @default(uuid())
+    type           String // See comment above for supported types
+    asset          String // Currency
+    chain          String // Source chain
+    userId         String // Sender (or 'platform' for deposits)
+    transferId     String? // Reference to transfer (null for deposits - no transfer record)
+    idempotencyKey String?  @unique // Dedup
+    createdAt      DateTime @default(now())
+
+    transfer Transfer? @relation(fields: [transferId], references: [id])
+    entries  Entry[]
+
+    @@index([transferId])
+    @@index([userId])
+    @@index([idempotencyKey])
+    @@index([createdAt])
+    @@map("journals")
+    @@schema("ledger_db")
+}
+
+/// How money moved - Actual debits & credits
+model Entry {
+    id        String   @id @default(uuid())
+    journalId String
+    accountId String
+    amount    Decimal  @db.Decimal(18, 6) // +credit / -debit
+    createdAt DateTime @default(now())
+
+    journal Journal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+    account Account @relation(fields: [accountId], references: [id])
+
+    @@index([journalId])
+    @@index([accountId])
+    @@index([createdAt])
+    @@map("entries")
+    @@schema("ledger_db")
+}
+
+/// Reservation - Tracks reserved funds for escrow
+model Reservation {
+    id             String   @id @default(uuid())
+    userId         String
+    amount         Decimal  @db.Decimal(18, 6)
+    asset          String
+    chain          String
+    reference      String   @db.Text // escrow ID or other reference
+    status         String   @default("reserved") // reserved / released / cancelled
+    transferId     String?  @unique // Reference to Transfer record (if applicable)
+    idempotencyKey String?  @unique
+    createdAt      DateTime @default(now())
+    updatedAt      DateTime @updatedAt
+
+    @@index([userId])
+    @@index([status])
+    @@index([reference])
+    @@index([transferId])
+    @@index([idempotencyKey])
+    @@map("reservations")
+    @@schema("ledger_db")
+}
+
+/// Reliable Kafka emission - Transactional Outbox Pattern
+model LedgerOutbox {
+    id          String    @id @default(uuid())
+    eventType   String // ledger.transfer_posted, ledger.balance_updated, etc. (maps to topic)
+    eventKey    String // Idempotency key (maps to partitionKey)
+    payload     Json // Event body
+    status      String    @default("pending") // pending / processing / published / failed
+    attempts    Int       @default(0) // Retries (maps to retryCount)
+    lastError   String?   @db.Text // Last error message
+    nextRetryAt DateTime? // When to retry next (exponential backoff)
+    publishedAt DateTime? // When event was successfully published
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+
+    @@index([status])
+    @@index([eventType])
+    @@index([createdAt])
+    @@index([nextRetryAt])
+    @@map("ledger_outbox")
+    @@schema("ledger_db")
+}

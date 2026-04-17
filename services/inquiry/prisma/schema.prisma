@@ -1,0 +1,108 @@
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated/prisma"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["inquiry_db"]
+}
+
+//
+// ENUMS
+//
+
+enum InquiryStatus {
+  open
+  closed
+
+  @@schema("inquiry_db")
+}
+
+enum MessageSenderRole {
+  buyer
+  seller
+  admin
+
+  @@schema("inquiry_db")
+}
+
+
+//
+// MODELS
+//
+
+model inquiries {
+  id                String        @id @default(uuid())
+  escrow_id         String        @unique
+  created_by        String
+  assigned_admin_id String?
+  buyer_id          String?       // Stored from escrow metadata (reduces auth dependencies)
+  seller_id         String?       // Stored from escrow metadata (reduces auth dependencies)
+  status            InquiryStatus @default(open)
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+
+  messages    inquiry_messages[]
+  attachments inquiry_attachments[]
+
+  @@index([escrow_id])
+  @@map("inquiries")
+  @@schema("inquiry_db")
+}
+
+model inquiry_messages {
+  id          String            @id @default(uuid())
+  inquiry_id  String
+  sender_id   String
+  sender_role MessageSenderRole
+  message     String?
+  created_at  DateTime          @default(now())
+
+  inquiry     inquiries             @relation(fields: [inquiry_id], references: [id], onDelete: Cascade)
+  attachments inquiry_attachments[]
+
+  @@index([inquiry_id, created_at])
+  @@map("inquiry_messages")
+  @@schema("inquiry_db")
+}
+
+model inquiry_attachments {
+  id         String   @id @default(uuid())
+  inquiry_id String
+  message_id String
+  file_url   String
+  file_type  String
+  created_at DateTime @default(now())
+
+  inquiry inquiries        @relation(fields: [inquiry_id], references: [id], onDelete: Cascade)
+  message inquiry_messages @relation(fields: [message_id], references: [id], onDelete: Cascade)
+
+  @@map("inquiry_attachments")
+  @@schema("inquiry_db")
+}
+
+/// Guarantees Kafka events are never lost - Transactional Outbox Pattern
+/// Events are written here in same transaction as state changes,
+/// then published to Kafka by the outbox processor.
+model OutboxEvent {
+  id           String    @id @default(uuid())
+  topic        String    // Kafka topic
+  partitionKey String    // Partition key (inquiryId)
+  payload      String    @db.Text // JSON-serialized event
+  status       String    @default("pending") // pending | published | failed
+  retryCount   Int       @default(0) // Number of publish attempts
+  lastError    String?   @db.Text // Last error message
+  createdAt    DateTime  @default(now())
+  publishedAt  DateTime? // When published to Kafka
+  nextRetryAt  DateTime? // For exponential backoff
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([nextRetryAt])
+  @@index([topic])
+  @@map("outbox_events")
+  @@schema("inquiry_db")
+}

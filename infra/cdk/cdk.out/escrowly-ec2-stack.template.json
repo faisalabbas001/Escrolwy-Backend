@@ -1,0 +1,436 @@
+{
+ "Description": "Escrowly EC2 Backend Services - Docker Compose deployment",
+ "Resources": {
+  "devescrowlyec2vpc24DCED06": {
+   "Type": "AWS::EC2::VPC",
+   "Properties": {
+    "CidrBlock": "10.0.0.0/16",
+    "EnableDnsHostnames": true,
+    "EnableDnsSupport": true,
+    "InstanceTenancy": "default",
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "escrowly-ec2-stack/dev-escrowly-ec2-vpc"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/Resource"
+   }
+  },
+  "devescrowlyec2vpcpublicSubnet1Subnet56225F7F": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": "us-west-2a",
+    "CidrBlock": "10.0.0.0/24",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "public"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/publicSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "devescrowlyec2vpc24DCED06"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/publicSubnet1/Subnet"
+   }
+  },
+  "devescrowlyec2vpcpublicSubnet1RouteTable7AE5F163": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/publicSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "devescrowlyec2vpc24DCED06"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/publicSubnet1/RouteTable"
+   }
+  },
+  "devescrowlyec2vpcpublicSubnet1RouteTableAssociationCD542006": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "devescrowlyec2vpcpublicSubnet1RouteTable7AE5F163"
+    },
+    "SubnetId": {
+     "Ref": "devescrowlyec2vpcpublicSubnet1Subnet56225F7F"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/publicSubnet1/RouteTableAssociation"
+   }
+  },
+  "devescrowlyec2vpcpublicSubnet1DefaultRouteFE3A09CF": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "devescrowlyec2vpcIGWA6AE522C"
+    },
+    "RouteTableId": {
+     "Ref": "devescrowlyec2vpcpublicSubnet1RouteTable7AE5F163"
+    }
+   },
+   "DependsOn": [
+    "devescrowlyec2vpcVPCGW19B511D1"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/publicSubnet1/DefaultRoute"
+   }
+  },
+  "devescrowlyec2vpcIGWA6AE522C": {
+   "Type": "AWS::EC2::InternetGateway",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "escrowly-ec2-stack/dev-escrowly-ec2-vpc"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/IGW"
+   }
+  },
+  "devescrowlyec2vpcVPCGW19B511D1": {
+   "Type": "AWS::EC2::VPCGatewayAttachment",
+   "Properties": {
+    "InternetGatewayId": {
+     "Ref": "devescrowlyec2vpcIGWA6AE522C"
+    },
+    "VpcId": {
+     "Ref": "devescrowlyec2vpc24DCED06"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-vpc/VPCGW"
+   }
+  },
+  "devescrowlyec2sgA8EAFBB9": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "Security group for Escrowly backend services",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow all outbound traffic by default",
+      "IpProtocol": "-1"
+     }
+    ],
+    "SecurityGroupIngress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow SSH access",
+      "FromPort": 22,
+      "IpProtocol": "tcp",
+      "ToPort": 22
+     },
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow BFF service access from frontend",
+      "FromPort": 3001,
+      "IpProtocol": "tcp",
+      "ToPort": 3001
+     },
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow HTTP",
+      "FromPort": 80,
+      "IpProtocol": "tcp",
+      "ToPort": 80
+     },
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow HTTPS",
+      "FromPort": 443,
+      "IpProtocol": "tcp",
+      "ToPort": 443
+     }
+    ],
+    "VpcId": {
+     "Ref": "devescrowlyec2vpc24DCED06"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-sg/Resource"
+   }
+  },
+  "devescrowlyec2role4CACB3E2": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ec2.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "IAM role for Escrowly EC2 instance",
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonSSMManagedInstanceCore"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-role/Resource"
+   }
+  },
+  "devescrowlyec2roleDefaultPolicy44426491": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:s3:::dev-escrowly-stack-devescrowlyfilesd7d0fc74-nlzj6dxdllaf",
+        "arn:aws:s3:::dev-escrowly-stack-devescrowlyfilesd7d0fc74-nlzj6dxdllaf/*"
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "devescrowlyec2roleDefaultPolicy44426491",
+    "Roles": [
+     {
+      "Ref": "devescrowlyec2role4CACB3E2"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-role/DefaultPolicy/Resource"
+   }
+  },
+  "devescrowlyec2instanceInstanceProfile971809EA": {
+   "Type": "AWS::IAM::InstanceProfile",
+   "Properties": {
+    "Roles": [
+     {
+      "Ref": "devescrowlyec2role4CACB3E2"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-instance/InstanceProfile"
+   }
+  },
+  "devescrowlyec2instanceBA0321C3": {
+   "Type": "AWS::EC2::Instance",
+   "Properties": {
+    "AvailabilityZone": "us-west-2a",
+    "BlockDeviceMappings": [
+     {
+      "DeviceName": "/dev/xvda",
+      "Ebs": {
+       "Encrypted": true,
+       "VolumeSize": 30,
+       "VolumeType": "gp3"
+      }
+     }
+    ],
+    "IamInstanceProfile": {
+     "Ref": "devescrowlyec2instanceInstanceProfile971809EA"
+    },
+    "ImageId": {
+     "Ref": "SsmParameterValueawsserviceamiamazonlinuxlatestal2023amikernel61x8664C96584B6F00A464EAD1953AFF4B05118Parameter"
+    },
+    "InstanceType": "t3.medium",
+    "KeyName": "escrowly-key",
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "devescrowlyec2sgA8EAFBB9",
+       "GroupId"
+      ]
+     }
+    ],
+    "SubnetId": {
+     "Ref": "devescrowlyec2vpcpublicSubnet1Subnet56225F7F"
+    },
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "escrowly-ec2-stack/dev-escrowly-ec2-instance"
+     }
+    ],
+    "UserData": {
+     "Fn::Base64": "#!/bin/bash\nyum update -y\nyum install -y docker\nsystemctl start docker\nsystemctl enable docker\nusermod -aG docker ec2-user\ncurl -L \"https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose\nchmod +x /usr/local/bin/docker-compose\nyum install -y git\nmkdir -p /home/ec2-user/app\nchown ec2-user:ec2-user /home/ec2-user/app\necho 'EC2 setup complete!' > /home/ec2-user/setup-complete.txt"
+    }
+   },
+   "DependsOn": [
+    "devescrowlyec2roleDefaultPolicy44426491",
+    "devescrowlyec2role4CACB3E2"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-instance/Resource"
+   }
+  },
+  "devescrowlyec2eip": {
+   "Type": "AWS::EC2::EIP",
+   "Properties": {
+    "InstanceId": {
+     "Ref": "devescrowlyec2instanceBA0321C3"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/dev-escrowly-ec2-eip"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1WOzWrDMBCEnyV3WXV1aM8hlOBThR1yLWtlQzeRJSOtYoLxuxf/tKKnnfnYnVkllXqX5Q6GWJjLvbDUyrFhMHcBQ/wa0Sg5nnsjDld31gehU2vJNKl1yDPLqvaJ8QStxcwz28foDQGTd3/Ls6gcY3DIR2Ac4LnVbG7PDOa7Q8eiQZMC8fMYfOqXgn+gcpHBmS0y649KT4Kgk2Pt18eWqb0ls5Rl9Xumg7+SxWkSNUafwhqkIUCHjGE2n4n7xJNw/oLyFl8eqpSvb7Lc3SJREZJj6lDW6/wBdhzBc2IBAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "escrowly-ec2-stack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Parameters": {
+  "SsmParameterValueawsserviceamiamazonlinuxlatestal2023amikernel61x8664C96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+   "Default": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Outputs": {
+  "InstanceId": {
+   "Description": "EC2 Instance ID",
+   "Value": {
+    "Ref": "devescrowlyec2instanceBA0321C3"
+   }
+  },
+  "PublicIP": {
+   "Description": "EC2 Public IP (Elastic IP)",
+   "Value": {
+    "Fn::GetAtt": [
+     "devescrowlyec2eip",
+     "PublicIp"
+    ]
+   }
+  },
+  "BFFEndpoint": {
+   "Description": "BFF Service Endpoint (for frontend)",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "http://",
+      {
+       "Fn::GetAtt": [
+        "devescrowlyec2eip",
+        "PublicIp"
+       ]
+      },
+      ":3001"
+     ]
+    ]
+   }
+  },
+  "SSHCommand": {
+   "Description": "SSH command to connect to instance",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "ssh -i <your-key.pem> ec2-user@",
+      {
+       "Fn::GetAtt": [
+        "devescrowlyec2eip",
+        "PublicIp"
+       ]
+      }
+     ]
+    ]
+   }
+  },
+  "DeployInstructions": {
+   "Description": "Deployment instructions",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "1. SSH into instance: ssh -i <key.pem> ec2-user@",
+      {
+       "Fn::GetAtt": [
+        "devescrowlyec2eip",
+        "PublicIp"
+       ]
+      },
+      "\n2. Clone repo: git clone <repo-url> ~/app/escrowly\n3. cd ~/app/escrowly/escrowly-backend\n4. cp .env.example .env && nano .env\n5. docker-compose build && docker-compose up -d"
+     ]
+    ]
+   }
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

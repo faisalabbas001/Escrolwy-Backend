@@ -1,0 +1,41 @@
+{
+  "name": "@escrowly/chain-config",
+  "version": "1.0.0",
+  "description": "Shared blockchain configuration for Escrowly services - RPCs, token addresses, ABIs, and chain metadata",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": [
+    "escrowly",
+    "blockchain",
+    "config",
+    "evm",
+    "solana",
+    "tron"
+  ],
+  "license": "UNLICENSED"
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

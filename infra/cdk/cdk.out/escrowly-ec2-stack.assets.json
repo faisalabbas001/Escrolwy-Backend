@@ -1,0 +1,21 @@
+{
+  "version": "48.0.0",
+  "files": {
+    "627b56d0304d0d8914521036546682dbe81d0c94ac3ec87e2c60969228f504d4": {
+      "displayName": "escrowly-ec2-stack Template",
+      "source": {
+        "path": "escrowly-ec2-stack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "956926660360-us-west-2-b4df6ffc": {
+          "bucketName": "cdk-hnb659fds-assets-956926660360-us-west-2",
+          "objectKey": "627b56d0304d0d8914521036546682dbe81d0c94ac3ec87e2c60969228f504d4.json",
+          "region": "us-west-2",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::956926660360:role/cdk-hnb659fds-file-publishing-role-956926660360-us-west-2"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

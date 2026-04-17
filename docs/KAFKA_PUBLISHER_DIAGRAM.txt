@@ -1,0 +1,290 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║         KAFKA PUBLISHER ARCHITECTURE - SERVICE DATABASE USAGE               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         kafka-publisher Package                             │
+│  (Generic, Database-Agnostic)                                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │              OutboxAdapter Interface                                 │   │
+│  │  ┌───────────────────────────────────────────────────────────────┐  │   │
+│  │  │ findPendingEvents(limit) → Promise<OutboxEvent[]>            │  │   │
+│  │  │ markPublished(id) → Promise<void>                            │  │   │
+│  │  │ markFailed(id, error, retryCount, nextRetryAt)              │  │   │
+│  │  │ markPermanentlyFailed(id, error, retryCount)                  │  │   │
+│  │  └───────────────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              ▲                                              │
+│                              │ implements                                   │
+│                              │                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │         OutboxProcessorService                                      │   │
+│  │  ┌───────────────────────────────────────────────────────────────┐  │   │
+│  │  │ constructor(adapter: OutboxAdapter, kafka, config)           │  │   │
+│  │  │                                                               │  │   │
+│  │  │ processBatch() {                                              │  │   │
+│  │  │   events = await adapter.findPendingEvents(20)  ←──┐         │  │   │
+│  │  │   for (event of events) {                          │         │  │   │
+│  │  │     await kafka.produce(...)                        │         │  │   │
+│  │  │     await adapter.markPublished(...)  ←────────────┘         │  │   │
+│  │  │   }                                                  │         │  │   │
+│  │  │ }                                                    │         │  │   │
+│  │  └───────────────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                              │
+                              │ uses (via DI)
+                              │
+        ┌─────────────────────┴─────────────────────┐
+        │                                           │
+        ▼                                           ▼
+┌───────────────────────┐              ┌───────────────────────┐
+│   Escrow Service      │              │   Ledger Service      │
+├───────────────────────┤              ├───────────────────────┤
+│                       │              │                       │
+│ ┌───────────────────┐ │              │ ┌───────────────────┐ │
+│ │PrismaOutboxAdapter│ │              │ │LedgerOutboxAdapter│ │
+│ │                   │ │              │ │                   │ │
+│ │ implements        │ │              │ │ implements        │ │
+│ │ OutboxAdapter     │ │              │ │ OutboxAdapter     │ │
+│ └───────────────────┘ │              │ └───────────────────┘ │
+│         │             │              │         │               │
+│         │ uses        │              │         │ uses          │
+│         ▼             │              │         ▼               │
+│ ┌───────────────┐    │              │ ┌───────────────┐    │
+│ │PrismaService  │    │              │ │PrismaService  │    │
+│ │(escrow_db)    │    │              │ │(ledger_db)    │    │
+│ └───────────────┘    │              │ └───────────────┘    │
+│         │             │              │         │               │
+│         │ queries    │              │         │ queries       │
+│         ▼             │              │         ▼               │
+│ ┌───────────────┐    │              │ ┌───────────────┐    │
+│ │outbox_events  │    │              │ │ledger_outbox  │    │
+│ │table          │    │              │ │table          │    │
+│ │(escrow_db)    │    │              │ │(ledger_db)    │    │
+│ └───────────────┘    │              │ └───────────────┘    │
+│                       │              │                       │
+└───────────────────────┘              └───────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            DATA FLOW EXAMPLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Step 1: Write Event (Same Transaction)
+───────────────────────────────────────────────────────────────────────────────
+Escrow Service Business Logic:
+  ┌────────────────────────────────────────────────────────────┐
+  │ await prisma.$transaction(async (tx) => {                 │
+  │   // Update escrow                                         │
+  │   await tx.escrow.update({ ... });                         │
+  │                                                            │
+  │   // Write to outbox (same transaction!)                  │
+  │   await tx.outboxEvent.create({                            │
+  │     topic: 'escrow.created',                              │
+  │     payload: JSON.stringify(event),                       │
+  │     status: 'pending'                                     │
+  │   });                                                      │
+  │ });                                                        │
+  └────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │ Escrow Database │
+                    │  outbox_events  │
+                    │  (escrow_db)    │
+                    └─────────────────┘
+
+
+Step 2: Poll for Pending Events
+───────────────────────────────────────────────────────────────────────────────
+OutboxProcessorService (every 2 seconds):
+  ┌────────────────────────────────────────────────────────────┐
+  │ async processBatch() {                                      │
+  │   // Call adapter method                                    │
+  │   const events = await adapter.findPendingEvents(20);      │
+  │   ...                                                       │
+  │ }                                                           │
+  └────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+PrismaOutboxAdapter (Escrow Service):
+  ┌────────────────────────────────────────────────────────────┐
+  │ async findPendingEvents(limit) {                            │
+  │   return await this.prisma.$queryRaw`                      │
+  │     SELECT * FROM outbox_events  ← Escrow's own table      │
+  │     WHERE status = 'pending'                               │
+  │     FOR UPDATE SKIP LOCKED                                 │
+  │     LIMIT ${limit}                                         │
+  │   `;                                                       │
+  │ }                                                           │
+  └────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │ Escrow Database │
+                    │  outbox_events  │
+                    │  Returns events │
+                    └─────────────────┘
+
+
+Step 3: Publish to Kafka
+───────────────────────────────────────────────────────────────────────────────
+OutboxProcessorService:
+  ┌────────────────────────────────────────────────────────────┐
+  │ for (const event of events) {                             │
+  │   await kafka.produce(                                     │
+  │     event.topic,                                           │
+  │     JSON.parse(event.payload),                            │
+  │     event.partitionKey                                     │
+  │   );                                                       │
+  │ }                                                          │
+  └────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  Kafka Broker   │
+                    │  Topic: escrow  │
+                    └─────────────────┘
+
+
+Step 4: Mark as Published
+───────────────────────────────────────────────────────────────────────────────
+OutboxProcessorService:
+  ┌────────────────────────────────────────────────────────────┐
+  │ await adapter.markPublished(event.id);                     │
+  └────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+PrismaOutboxAdapter:
+  ┌────────────────────────────────────────────────────────────┐
+  │ async markPublished(id) {                                   │
+  │   await this.prisma.outboxEvent.update({                   │
+  │     where: { id },                                         │
+  │     data: { status: 'published' }  ← Updates Escrow DB    │
+  │   });                                                      │
+  │ }                                                           │
+  └────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │ Escrow Database │
+                    │  outbox_events  │
+                    │  status updated │
+                    └─────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                          KEY CODE EXAMPLES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Service Module Registration (Escrow)
+───────────────────────────────────────────────────────────────────────────────
+// services/escrow/src/app.module.ts
+@Module({
+  imports: [
+    DatabaseModule,  // Provides PrismaService for escrow_db
+    
+    KafkaPublisherModule.forRoot({
+      adapter: PrismaOutboxAdapter,  // ← Service-specific adapter class
+      config: {
+        pollingIntervalMs: 2000,
+        batchSize: 20,
+      },
+    }),
+  ],
+})
+export class AppModule {}
+
+
+2. Adapter Implementation (Escrow)
+───────────────────────────────────────────────────────────────────────────────
+// services/escrow/src/kafka/prisma-outbox.adapter.ts
+@Injectable()
+export class PrismaOutboxAdapter implements OutboxAdapter {
+  constructor(private readonly prisma: PrismaService) {}
+  // ↑ PrismaService is injected - it connects to escrow_db
+  
+  async findPendingEvents(limit: number): Promise<OutboxEvent[]> {
+    // ⚠️ Queries ESCROW service's own database
+    const events = await this.prisma.$queryRaw`
+      SELECT * FROM outbox_events  -- ← Escrow DB table
+      WHERE status = 'pending'
+      FOR UPDATE SKIP LOCKED
+      LIMIT ${limit}
+    `;
+    return events.map(/* map to OutboxEvent */);
+  }
+  
+  async markPublished(id: string): Promise<void> {
+    // ⚠️ Updates ESCROW service's own database
+    await this.prisma.outboxEvent.update({
+      where: { id },
+      data: { status: 'published' }
+    });
+  }
+}
+
+
+3. Module Factory (kafka-publisher)
+───────────────────────────────────────────────────────────────────────────────
+// packages/kafka-publisher/src/module/kafka-publisher.module.ts
+static forRoot(options: {
+  adapter: new (...args: any[]) => OutboxAdapter;  // ← Service provides adapter
+  config?: PublisherConfig;
+}): DynamicModule {
+  return {
+    providers: [
+      {
+        provide: 'OUTBOX_ADAPTER',
+        useClass: options.adapter,  // ← Creates service-specific adapter
+      },
+      {
+        provide: OutboxProcessorService,
+        inject: ['OUTBOX_ADAPTER', KafkaService, 'PUBLISHER_CONFIG'],
+        useFactory: (adapter: OutboxAdapter, kafka, config) => {
+          // ↑ Adapter instance is injected here
+          // It queries service's own database via PrismaService
+          return new OutboxProcessorService(adapter, kafka, config);
+        },
+      },
+    ],
+  };
+}
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Each service has its OWN outbox table in its OWN database:
+   • Escrow:  escrow_db.outbox_events
+   • Ledger:  ledger_db.ledger_outbox
+   • Admin:   admin_db.outbox_events (if implemented)
+
+✅ kafka-publisher package is GENERIC and database-agnostic:
+   • Defines OutboxAdapter interface
+   • Uses adapter pattern for database access
+   • Doesn't know about specific tables or schemas
+
+✅ Each service implements its OWN adapter:
+   • PrismaOutboxAdapter (Escrow) → queries escrow_db
+   • LedgerOutboxAdapter (Ledger) → queries ledger_db
+   • Each adapter uses service's own PrismaService
+
+✅ Dependency Injection connects everything:
+   • Service registers adapter class
+   • NestJS creates adapter with service's PrismaService
+   • OutboxProcessorService receives adapter instance
+   • Processor calls adapter → adapter queries service's DB
+
+✅ Benefits:
+   • Service isolation (each service owns its data)
+   • Database isolation (no shared database)
+   • Transactional guarantees (outbox in same DB as business data)
+   • Independent scaling (each service scales independently)
+   • No cross-service dependencies
+

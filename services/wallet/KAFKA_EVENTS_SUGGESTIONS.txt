@@ -1,0 +1,558 @@
+================================================================================
+KAFKA EVENTS SUGGESTIONS - WALLET SERVICE
+================================================================================
+Total Missing Events: 89
+Purpose: Reporting Service, Debugging, Security Auditing, Performance Monitoring
+================================================================================
+
+
+================================================================================
+1. CONSUMER: user-created.consumer.ts
+================================================================================
+
+Location: Line 86
+Event: wallet.generation.initiated
+Use Case: Track wallet generation latency
+
+Location: Line 59-66
+Event: wallet.user.already_exists
+Use Case: Detect duplicate processing, idempotency tracking
+
+Location: Line 86-101
+Events: wallet.evm.generated, wallet.sol.generated, wallet.trc.generated
+Use Case: Per-chain generation metrics
+
+Location: Line 125-128
+Event: wallet.generation.failed
+Use Case: Debug failed wallet creation
+
+
+================================================================================
+2. CONSUMER: withdrawal-requested.consumer.ts
+================================================================================
+
+Location: Line 252-296, 325-363, 391-428
+Events: wallet.hotWallet.fundingRequired, wallet.hotWallet.funded
+Use Case: Track hot wallet liquidity
+
+Location: Line 282-293, 350-360, 415-425
+Event: wallet.funding.confirmationTimeout
+Use Case: Monitor blockchain confirmation delays
+
+Location: Line 240-244, 317-320, 382-386
+Event: wallet.withdrawal.validationFailed
+Use Case: Track invalid withdrawal attempts
+
+Location: Line 299-305, 366-371, 431-436
+Event: wallet.withdrawal.executing
+Use Case: Monitor transaction queue depth
+
+Location: Line 164-195
+Event: wallet.withdrawal.retryRequired
+Use Case: Understand retry patterns
+
+
+================================================================================
+3. CONSUMER: deposit-processor.service.ts
+================================================================================
+
+Location: Line 54-56, 62-68
+Events: wallet.depositProcessor.started, wallet.depositProcessor.stopped
+Use Case: Monitor processor health
+
+Location: Line 77-81
+Event: wallet.depositQueue.empty
+Use Case: Monitor queue depth
+
+Location: Line 117-121
+Event: wallet.deposit.unknownAddress
+Use Case: Security monitoring
+
+Location: Line 123-136
+Event: wallet.deposit.duplicate
+Use Case: Track blockchain reorgs
+
+Location: Line 169-174
+Event: wallet.depositProcessor.error
+Use Case: Monitor processor stability
+
+Location: Line 85-91
+Event: wallet.depositProcessor.loopError
+Use Case: Detect systemic issues
+
+
+================================================================================
+4. CRON: deposit-sweep.cron.ts
+================================================================================
+
+Location: Line 51-73
+Events: wallet.depositSweep.started, wallet.depositSweep.completed
+Use Case: Monitor cron execution
+
+Location: Line 53-55
+Event: wallet.depositSweep.alreadyRunning
+Use Case: Alert on sweep delays
+
+Location: Line 78-218
+Event: wallet.depositSweep.chainSummary
+Use Case: Per-chain metrics
+
+Location: Line 105-112
+Event: wallet.depositSweep.walletLookupFailed
+Use Case: Data integrity monitoring
+
+Location: Line 115-119
+Event: wallet.depositSweep.unsupportedToken
+Use Case: Configuration error detection
+
+Location: Line 210-213
+Event: wallet.depositSweep.depositFailed
+Use Case: Granular failure analysis
+
+Location: Line 132-144
+Events: wallet.depositWallet.fundingRequired, wallet.depositWallet.funded
+Use Case: Per-deposit-wallet gas costs
+
+Location: Line 146-157
+Event: wallet.depositSweep.amountMismatch
+Use Case: Detect precision loss
+
+Location: Line 184-190
+Event: wallet.depositSweep.hotToColdTriggered
+Use Case: Transfer trigger patterns
+
+
+================================================================================
+5. CRON: withdrawal-retry.cron.ts
+================================================================================
+
+Location: Line 53-88
+Events: wallet.withdrawalRetry.started, wallet.withdrawalRetry.completed
+Use Case: Monitor retry job health
+
+Location: Line 56-58
+Event: wallet.withdrawalRetry.alreadyRunning
+Use Case: Detect if retries falling behind
+
+Location: Line 64-72
+Event: wallet.withdrawalRetry.pendingCount
+Use Case: Monitor pending queue depth
+
+Location: Line 147-172
+Event: wallet.withdrawal.succeededOnRetry
+Use Case: Understand retry success patterns
+
+Location: Line 173-195
+Event: wallet.withdrawal.retryFailed
+Use Case: Error pattern analysis
+
+Location: Line 240-282, 308-343, 368-403
+Event: wallet.retryWithdrawal.gasInsufficient
+Use Case: Track gas blocking retries
+
+
+================================================================================
+6. SERVICE: hot-to-cold.service.ts
+================================================================================
+
+Location: Line 66-68
+Event: wallet.hotWallet.balanceChecked
+Use Case: Monitor balance trends
+
+Location: Line 74-77
+Event: wallet.hotWallet.thresholdEvaluated
+Use Case: Understand transfer triggers
+
+Location: Line 79-84
+Event: wallet.hotToCold.transferAmountCalculated
+Use Case: Verify percentage calculations
+
+Location: Line 139-142
+Event: wallet.coldWallet.notConfigured
+Use Case: Alert on missing configuration
+
+Location: Line 91-112
+Event: wallet.hotToCold.transferInitiated
+Use Case: Track transfer latency
+
+Location: Line 151-183
+Event: wallet.hotWallet.balanceCheckFailed
+Use Case: Detect RPC issues
+
+
+================================================================================
+7. SERVICE: wallet-generator.service.ts
+================================================================================
+
+Location: Line 38-44
+Events: wallet.evm.generated, wallet.sol.generated, wallet.trc.generated
+Use Case: Per-chain generation latency
+
+Location: Line 137-156
+Events: wallet.keyRecovery.attempted, wallet.keyRecovery.successful
+Use Case: Security audit of key access
+
+Location: Line 137-156
+Event: wallet.encryption.decrypted
+Use Case: Compliance audit trail
+
+Location: Line 67-70, 98-101, 129-131
+Event: wallet.generation.chainFailed
+Use Case: Chain-specific generation issues
+
+
+================================================================================
+8. SERVICE: encryption.service.ts
+================================================================================
+
+Location: Line 23-28
+Event: wallet.encryption.encryptAttempted
+Use Case: Track encryption frequency
+
+Location: Line 23-28
+Event: wallet.encryption.encryptFailed
+Use Case: Monitor encryption health
+
+Location: Line 36-41
+Event: wallet.encryption.decryptAttempted
+Use Case: Security audit trail
+
+Location: Line 36-41
+Event: wallet.encryption.decryptFailed
+Use Case: Detect tampering
+
+Location: All operations
+Event: wallet.kms.latency
+Use Case: Monitor KMS performance
+
+
+================================================================================
+9. SERVICE: kms.service.ts
+================================================================================
+
+Location: Line 43-62
+Event: wallet.kms.initRetry
+Use Case: Monitor startup issues
+
+Location: Line 71-89
+Event: wallet.kms.keyValidated
+Use Case: Compliance audit trail
+
+Location: Line 103-106
+Event: wallet.kms.encryptionContextSet
+Use Case: Audit encryption patterns
+
+Location: Line 108-121, 158-171
+Event: wallet.kms.operationCompleted
+Use Case: Performance monitoring
+
+Location: All operations
+Event: wallet.kms.operationFailed
+Use Case: Error pattern analysis
+
+Location: Line 194-196
+Event: wallet.kms.healthCheck
+Use Case: Detect KMS degradation
+
+
+================================================================================
+10. SERVICE: platform-key.service.ts
+================================================================================
+
+Location: Line 44-75
+Event: wallet.platformKey.retrieved
+Use Case: Security audit of key access
+
+Location: Line 101-102, 121-122, 141
+Event: wallet.platformKey.notFound
+Use Case: Configuration issues
+
+Location: Line 129
+Event: wallet.platformKey.decrypted
+Use Case: Compliance audit trail
+
+Location: Line 31-37
+Event: wallet.platformKey.initialized
+Use Case: Startup diagnostics
+
+
+================================================================================
+11. SERVICE: evm-executor.service.ts
+================================================================================
+
+Location: Line 59-114
+Event: wallet.evm.transferInitiated
+Use Case: Track transfers, audit trail
+
+Location: Line 82-89
+Event: wallet.evm.gasPriceFetched
+Use Case: Monitor gas market
+
+Location: Line 98-99
+Event: wallet.evm.confirmationWaiting
+Use Case: Monitor confirmation latency
+
+Location: Line 107-113
+Event: wallet.evm.transferFailed
+Use Case: Categorize failures
+
+Location: Line 119-169
+Event: wallet.evm.nativeTransferInitiated
+Use Case: Track gas funding separately
+
+Location: Line 174-191
+Event: wallet.evm.balanceChecked
+Use Case: Monitor balances over time
+
+Location: Line 196-203
+Event: wallet.evm.nativeBalanceChecked
+Use Case: Monitor gas reserves
+
+Location: Line 208-215
+Event: wallet.evm.fundingNeeded
+Use Case: Proactive gas alerts
+
+Location: All RPC calls
+Event: wallet.evm.providerError
+Use Case: Detect RPC node issues
+
+Location: Line 234-268
+Event: wallet.evm.confirmationTimeout
+Use Case: Monitor blockchain congestion
+
+Location: Line 253-255
+Event: wallet.evm.transactionFailed
+Use Case: On-chain failure tracking
+
+
+================================================================================
+12. SERVICE: solana-executor.service.ts
+================================================================================
+
+Location: Line 66-161
+Events: wallet.sol.transferInitiated, wallet.sol.transferCompleted
+Use Case: Track transfers
+
+Location: Line 102-124
+Event: wallet.sol.ataCreated
+Use Case: Track account creation costs
+
+Location: Line 91-97
+Event: wallet.sol.amountCalculated
+Use Case: Verify conversion logic
+
+Location: Line 166-215
+Event: wallet.sol.solTransferInitiated
+Use Case: Separate funding operations
+
+Location: Line 220-259
+Event: wallet.sol.balanceChecked
+Use Case: Monitor balances
+
+Location: Line 264-269
+Event: wallet.sol.solBalanceChecked
+Use Case: Monitor fee reserves
+
+Location: Line 274-278
+Event: wallet.sol.fundingNeeded
+Use Case: Proactive funding alerts
+
+Location: Line 245-250
+Event: wallet.sol.ataNotFound
+Use Case: New user patterns
+
+Location: Line 316-352
+Events: wallet.sol.confirmationWaiting, wallet.sol.confirmationTimeout
+Use Case: Confirmation latency
+
+Location: Line 335-339
+Event: wallet.sol.transactionFailed
+Use Case: Categorize failures
+
+Location: All RPC calls
+Event: wallet.sol.connectionError
+Use Case: Detect RPC issues
+
+
+================================================================================
+13. SERVICE: tron-executor.service.ts
+================================================================================
+
+Location: Line 64-110
+Event: wallet.tron.tokenTransferInitiated
+Use Case: Track transfers
+
+Location: Line 76
+Event: wallet.tron.contractLoaded
+Use Case: Detect contract lookup failures
+
+Location: Line 115-155
+Event: wallet.tron.trxTransferInitiated
+Use Case: Separate funding operations
+
+Location: Line 160-200
+Event: wallet.tron.balanceChecked
+Use Case: Monitor balances
+
+Location: Line 205-214
+Event: wallet.tron.trxBalanceChecked
+Use Case: Monitor energy/bandwidth
+
+Location: Line 219-223
+Event: wallet.tron.fundingNeeded
+Use Case: Proactive funding alerts
+
+Location: Line 42-59
+Event: wallet.tron.tronWebInitialized
+Use Case: Monitor TronGrid API
+
+Location: Line 254-282
+Events: wallet.tron.confirmationWaiting, wallet.tron.confirmationTimeout
+Use Case: Confirmation latency
+
+Location: Line 95-101, 140-146
+Event: wallet.tron.transactionInfoFetched
+Use Case: Verify transaction metadata
+
+
+================================================================================
+SUMMARY TABLE
+================================================================================
+
+Component                        | Gap Count | Priority
+---------------------------------|-----------|----------
+user-created consumer            | 4         | Medium
+withdrawal-requested consumer    | 5         | HIGH
+deposit-processor                | 6         | HIGH
+deposit-sweep cron               | 9         | HIGH
+withdrawal-retry cron            | 6         | HIGH
+hot-to-cold service              | 6         | Medium
+wallet-generator                 | 4         | Medium
+encryption service               | 5         | HIGH
+kms service                      | 6         | HIGH
+platform-key service             | 4         | HIGH
+evm-executor                     | 11        | HIGH
+solana-executor                  | 11        | HIGH
+tron-executor                    | 9         | Medium
+---------------------------------|-----------|----------
+TOTAL                            | 89        |
+
+
+================================================================================
+RECOMMENDED NEW EVENT CATEGORIES FOR kafka-core
+================================================================================
+
+wallet.key.*           - Key access and KMS operations
+wallet.encryption.*    - Encryption/decryption operations
+wallet.balance.*       - Balance checks and monitoring
+wallet.funding.*       - Gas/native token funding
+wallet.transaction.*   - On-chain transaction lifecycle
+wallet.validation.*    - Input validation and config checks
+wallet.processor.*     - Consumer/cron processor health
+wallet.rpc.*           - RPC provider health and performance
+
+
+================================================================================
+COMPLETE EVENT LIST (ALPHABETICAL)
+================================================================================
+
+wallet.coldWallet.notConfigured
+wallet.deposit.duplicate
+wallet.deposit.unknownAddress
+wallet.depositProcessor.error
+wallet.depositProcessor.loopError
+wallet.depositProcessor.started
+wallet.depositProcessor.stopped
+wallet.depositQueue.empty
+wallet.depositSweep.alreadyRunning
+wallet.depositSweep.amountMismatch
+wallet.depositSweep.chainSummary
+wallet.depositSweep.completed
+wallet.depositSweep.depositFailed
+wallet.depositSweep.hotToColdTriggered
+wallet.depositSweep.started
+wallet.depositSweep.unsupportedToken
+wallet.depositSweep.walletLookupFailed
+wallet.depositWallet.funded
+wallet.depositWallet.fundingRequired
+wallet.encryption.decryptAttempted
+wallet.encryption.decryptFailed
+wallet.encryption.decrypted
+wallet.encryption.encryptAttempted
+wallet.encryption.encryptFailed
+wallet.evm.balanceChecked
+wallet.evm.confirmationTimeout
+wallet.evm.confirmationWaiting
+wallet.evm.fundingNeeded
+wallet.evm.gasPriceFetched
+wallet.evm.generated
+wallet.evm.nativeBalanceChecked
+wallet.evm.nativeTransferInitiated
+wallet.evm.providerError
+wallet.evm.transferFailed
+wallet.evm.transferInitiated
+wallet.funding.confirmationTimeout
+wallet.generation.chainFailed
+wallet.generation.failed
+wallet.generation.initiated
+wallet.hotToCold.transferAmountCalculated
+wallet.hotToCold.transferInitiated
+wallet.hotWallet.balanceCheckFailed
+wallet.hotWallet.balanceChecked
+wallet.hotWallet.funded
+wallet.hotWallet.fundingRequired
+wallet.hotWallet.thresholdEvaluated
+wallet.keyRecovery.attempted
+wallet.keyRecovery.successful
+wallet.kms.encryptionContextSet
+wallet.kms.healthCheck
+wallet.kms.initRetry
+wallet.kms.keyValidated
+wallet.kms.latency
+wallet.kms.operationCompleted
+wallet.kms.operationFailed
+wallet.platformKey.decrypted
+wallet.platformKey.initialized
+wallet.platformKey.notFound
+wallet.platformKey.retrieved
+wallet.retryWithdrawal.gasInsufficient
+wallet.sol.amountCalculated
+wallet.sol.ataCreated
+wallet.sol.ataNotFound
+wallet.sol.balanceChecked
+wallet.sol.confirmationTimeout
+wallet.sol.confirmationWaiting
+wallet.sol.connectionError
+wallet.sol.fundingNeeded
+wallet.sol.generated
+wallet.sol.solBalanceChecked
+wallet.sol.solTransferInitiated
+wallet.sol.transactionFailed
+wallet.sol.transferCompleted
+wallet.sol.transferInitiated
+wallet.trc.generated
+wallet.tron.balanceChecked
+wallet.tron.confirmationTimeout
+wallet.tron.confirmationWaiting
+wallet.tron.contractLoaded
+wallet.tron.fundingNeeded
+wallet.tron.tokenTransferInitiated
+wallet.tron.transactionInfoFetched
+wallet.tron.tronWebInitialized
+wallet.tron.trxBalanceChecked
+wallet.tron.trxTransferInitiated
+wallet.user.already_exists
+wallet.withdrawal.executing
+wallet.withdrawal.retryFailed
+wallet.withdrawal.retryRequired
+wallet.withdrawal.succeededOnRetry
+wallet.withdrawal.validationFailed
+wallet.withdrawalRetry.alreadyRunning
+wallet.withdrawalRetry.completed
+wallet.withdrawalRetry.pendingCount
+wallet.withdrawalRetry.started
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================

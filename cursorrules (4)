@@ -1,0 +1,572 @@
+# Escrowly Backend - Cursor Project Rules
+
+# These rules ensure consistency across all services in the monorepo
+
+## Project Architecture
+
+### Monorepo Structure
+
+```
+escrowly-backend/
+├── packages/                    # Shared packages (npm workspaces)
+│   └── shared-config/           # Shared config, secrets, utilities
+├── services/                    # Microservices
+│   ├── auth/                    # Authentication service (port 3000)
+│   ├── admin/                   # Admin service - blogs, help-desk (port 3002)
+│   ├── bff/                     # Backend-for-Frontend - API gateway (port 3001)
+│   ├── escrow/                  # Escrow service (future)
+│   ├── wallet/                  # Wallet service (future)
+│   └── ledger/  
+│   └── inquiry/                  # inquiry  service (future)
+│   └── notification/              # notification  service (future)
+
+├── infra/                       # AWS CDK infrastructure
+├── scripts/                     # Utility scripts (backups, migrations)
+└── docker-compose.yml           # Local/EC2 orchestration
+```
+
+### Service Structure (follow auth/admin pattern)
+
+```
+services/<service-name>/
+├── src/
+│   ├── main.ts                  # Entry point
+│   ├── app.module.ts            # Root module
+│   ├── app.controller.ts        # Root controller
+│   ├── app.service.ts           # Root service
+│   ├── common/                  # Shared utilities, guards, decorators
+│   │   ├── decorators/
+│   │   ├── guards/
+│   │   ├── interceptors/
+│   │   └── index.ts
+│   ├── health/                  # Health check module
+│   │   ├── health.controller.ts
+│   │   ├── health.service.ts
+│   │   ├── health.module.ts
+│   │   └── index.ts
+│   ├── prisma/                  # Prisma module (if service uses DB)
+│   │   ├── prisma.service.ts
+│   │   ├── prisma.module.ts
+│   │   └── index.ts
+│   └── <feature>/               # Feature modules
+│       ├── dto/
+│       │   ├── create-<entity>.dto.ts
+│       │   ├── update-<entity>.dto.ts
+│       │   ├── <entity>-response.dto.ts
+│       │   └── index.ts
+│       ├── <feature>.controller.ts
+│       ├── <feature>.service.ts
+│       ├── <feature>.module.ts
+│       └── index.ts
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+├── generated/                   # Prisma generated client (gitignored)
+│   └── prisma/
+├── test/
+├── Dockerfile
+├── .env                         # Local env (gitignored)
+├── .env.example                 # Env template (committed)
+├── package.json
+├── nest-cli.json
+└── tsconfig.json
+```
+
+## Naming Conventions
+
+### Files & Folders
+
+- Use **kebab-case** for all file and folder names
+- Examples: `user-profile.service.ts`, `create-blog.dto.ts`, `help-desk/`
+
+### Classes & Types
+
+- Use **PascalCase** for classes, interfaces, types, enums
+- Examples: `UserService`, `CreateBlogDto`, `BlogResponseDto`
+
+### Variables & Functions
+
+- Use **camelCase** for variables, functions, methods
+- Examples: `findAllBlogs()`, `createUser()`, `blogService`
+
+### Database Tables (Prisma)
+
+- Use **snake_case** for table names in schema
+- Prisma model names are **PascalCase** (auto-mapped)
+- Example: `help_desk_categories` table → `HelpDeskCategory` model
+
+### API Endpoints
+
+- Use **kebab-case** for URL paths
+- Prefix with `/api/v1/`
+- Group by resource: `/api/v1/admin/blogs`, `/api/v1/auth/login`
+
+### Environment Variables
+
+- Use **UPPER_SNAKE_CASE**
+- Examples: `DATABASE_URL`, `JWT_SECRET`, `S3_BUCKET`
+
+## Shared Packages Usage
+
+### @escrowly/shared-config
+
+Located at `packages/shared-config/`. Contains:
+
+- `SecretsModule` - Environment/secrets management
+- `SecretsService` - Access secrets across services
+
+**Usage in any service:**
+
+```typescript
+// In app.module.ts
+import { SecretsModule } from "@escrowly/shared-config";
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, cache: true }),
+    SecretsModule, // Add this
+    // ...other modules
+  ],
+})
+export class AppModule {}
+```
+
+**IMPORTANT:** Never duplicate shared utilities. If something is needed by multiple services, add it to `packages/shared-config/`.
+
+## Prisma Rules
+
+### Schema Location
+
+Each service with DB access has its own schema at `services/<service>/prisma/schema.prisma`.
+
+### Schema Configuration
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"  // ALWAYS output to generated/ folder
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+```
+
+### Database Schema Separation
+
+- Auth service uses `auth_db` schema
+- Admin service uses `admin_db` schema
+- Each new service gets its own schema: `<service>_db`
+
+**DATABASE_URL format:**
+
+```
+postgresql://user:password@host:port/escrowly?schema=<service>_db
+mypassword:postgres
+my servive:inquiry
+
+```
+
+### Prisma Client Generation
+
+**ALWAYS generate from root**, not from service folder:
+
+```bash
+# From escrowly-backend/ root
+npm run auth:prisma:generate    # Generates auth client
+npm run admin:prisma:generate   # Generates admin client
+```
+
+### Prisma Imports
+
+**ALWAYS import from generated folder**, not from `@prisma/client`:
+
+```typescript
+// ✅ CORRECT
+import { PrismaClient, User, Blog } from "../../generated/prisma";
+
+// ❌ WRONG - causes conflicts
+import { PrismaClient } from "@prisma/client";
+```
+
+### Migrations
+
+Run from root with dotenv:
+
+```bash
+npm run auth:prisma:migrate     # Auth migrations
+npm run admin:prisma:migrate    # Admin migrations
+```
+
+## Node Modules Rules
+
+### Single node_modules at Root
+npm run inquiry:prisma:migrate    # Admin migrations
+
+- **ONE** `node_modules/` at monorepo root
+- Services do NOT have their own `node_modules/`
+- Use npm workspaces for dependency management
+
+### Adding Dependencies
+
+```bash
+# Add to specific service
+npm install <package> -w services/auth
+npm install <package> -w services/admin
+
+# Add to shared-config
+npm install <package> -w packages/shared-config
+
+# Add to root (dev tools)
+npm install -D <package>
+```
+
+### package.json Structure
+
+Each service's `package.json` should reference shared-config:
+
+```json
+{
+  "dependencies": {
+    "@escrowly/shared-config": "file:../../packages/shared-config"
+  }
+}
+```
+
+## API Design Rules
+
+### Response Format
+
+All APIs return consistent JSON structure:
+
+```typescript
+// Success (single item)
+{ "id": "...", "name": "...", ... }
+
+// Success (list with pagination)
+{
+  "data": [...],
+  "total": 100,
+  "page": 1,
+  "limit": 10,
+  "totalPages": 10
+}
+
+// Error
+{
+  "message": "Error description",
+  "error": "BadRequest",
+  "statusCode": 400
+}
+```
+
+### DTO Rules
+
+- **Create DTOs:** All required fields, validation decorators
+- **Update DTOs:** All optional fields (PartialType or manual)
+- **Response DTOs:** What API returns (no sensitive data)
+
+```typescript
+// create-blog.dto.ts
+export class CreateBlogDto {
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @IsString()
+  @IsNotEmpty()
+  slug: string;
+}
+
+// update-blog.dto.ts
+export class UpdateBlogDto {
+  @IsString()
+  @IsOptional()
+  title?: string;
+}
+```
+
+### Validation
+
+- Use `class-validator` decorators on all DTOs
+- Enable global validation pipe in `main.ts`:
+
+```typescript
+app.useGlobalPipes(
+  new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  })
+);
+```
+
+### API Versioning
+
+- All APIs versioned: `/api/v1/...`
+- Set in `main.ts`:
+
+```typescript
+app.setGlobalPrefix("api");
+app.enableVersioning({ type: VersioningType.URI, defaultVersion: "1" });
+```
+
+## BFF (Backend-for-Frontend) Rules
+
+### BFF is the Public Gateway
+
+- Frontend ONLY calls BFF (port 3001)
+- BFF proxies to internal services (auth, admin, etc.)
+- BFF handles JWT validation, CORS, rate limiting
+
+### Proxy Pattern
+
+```typescript
+// BFF controller proxies to admin service
+@Get('blogs')
+async getBlogs() {
+  return this.proxyService.proxyToAdmin('GET', '/api/v1/admin/blogs');
+}
+```
+
+### Service URLs in BFF
+
+```typescript
+// In docker-compose / .env
+AUTH_SERVICE_URL=http://auth-service:3000
+ADMIN_SERVICE_URL=http://admin-service:3002
+```
+
+## Environment Variables
+
+### Required .env.example
+
+Every service MUST have `.env.example` with all required vars (no secrets):
+
+```env
+NODE_ENV=development
+PORT=3000
+SERVICE_NAME=auth-service
+DATABASE_URL=postgresql://user:pass@localhost:5433/escrowly?schema=auth_db
+JWT_SECRET=your_secret_here
+REDIS_URL=redis://localhost:6379
+```
+
+### Secrets Handling
+
+- Local dev: Use `.env` files (gitignored)
+- Production: Use AWS Secrets Manager via `SecretsService`
+- NEVER commit secrets to git
+
+## Docker Rules
+
+### Dockerfile Pattern
+
+Follow existing auth/admin Dockerfiles:
+
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+COPY services/<service>/package*.json ./services/<service>/
+COPY packages/shared-config/package*.json ./packages/shared-config/
+RUN npm install --workspace=<service> --workspace=@escrowly/shared-config
+COPY packages/shared-config ./packages/shared-config/
+RUN npm run build -w @escrowly/shared-config
+COPY services/<service> ./services/<service>
+RUN npx prisma generate --schema=services/<service>/prisma/schema.prisma
+RUN npm run build -w <service>
+
+FROM node:20-alpine AS production
+# ... production stage
+```
+
+### docker-compose.yml
+
+When adding new service:
+
+1. Add service definition under `# Application Services`
+2. Use internal network: `escrowly-network`
+3. Set proper `depends_on` with health checks
+4. Use service names for internal URLs (not localhost)
+
+## Code Style
+
+### Imports Order
+
+```typescript
+// 1. NestJS core
+import { Injectable, Logger } from "@nestjs/common";
+
+// 2. External packages
+import { ConfigService } from "@nestjs/config";
+
+// 3. Internal shared packages
+import { SecretsService } from "@escrowly/shared-config";
+
+// 4. Local imports (relative)
+import { PrismaService } from "../prisma";
+import { CreateBlogDto } from "./dto";
+```
+
+### Logging
+
+Use NestJS Logger in all services:
+
+```typescript
+private readonly logger = new Logger(BlogService.name);
+
+this.logger.log('Blog created');
+this.logger.error('Failed to create blog', error.stack);
+```
+
+### Error Handling
+
+- Use NestJS built-in exceptions: `NotFoundException`, `BadRequestException`, etc.
+- Always log errors before throwing
+- Include meaningful error messages
+
+## Testing Rules
+
+### Test File Naming
+
+- Unit tests: `*.spec.ts` (same folder as source)
+- E2E tests: `*.e2e-spec.ts` (in `test/` folder)
+
+### Test Structure
+
+```typescript
+describe("BlogService", () => {
+  describe("create", () => {
+    it("should create a blog", async () => {
+      // ...
+    });
+
+    it("should throw if slug exists", async () => {
+      // ...
+    });
+  });
+});
+```
+
+## Git Rules
+
+### Branch Naming
+
+- Feature: `feature/<feature-name>`
+- Bugfix: `fix/<bug-description>`
+- Hotfix: `hotfix/<issue>`
+
+### Commit Messages
+
+Use conventional commits:
+
+```
+feat: add blog caching with Redis
+fix: resolve category deletion 404
+chore: update dependencies
+docs: add API documentation
+```
+
+### What NOT to Commit
+
+- `.env` files (use `.env.example`)
+- `node_modules/`
+- `dist/`
+- `generated/` (Prisma client)
+- IDE settings (`.vscode/`, `.idea/`)
+
+## Quick Reference Commands
+
+```bash
+# Development
+npm run auth:dev              # Start auth in watch mode
+npm run admin:dev             # Start admin in watch mode
+npm run bff:dev               # Start BFF in watch mode
+
+# Prisma (from root)
+npm run auth:prisma:generate  # Generate auth Prisma client
+npm run auth:prisma:migrate   # Run auth migrations
+npm run admin:prisma:generate # Generate admin Prisma client
+npm run admin:prisma:migrate  # Run admin migrations
+
+# Docker
+docker-compose up -d          # Start all services
+docker-compose up -d --build  # Rebuild and start
+docker-compose logs -f <svc>  # View logs
+docker-compose down           # Stop all
+
+# Testing
+npm run test -w services/auth
+npm run test:e2e -w services/auth
+```
+
+## Swagger / OpenAPI Documentation Standards
+
+Use the published `SWAGGER_DOCUMENTATION_STANDARDS.md` (same content summarized here) for all services (auth, admin, bff, future services).
+
+### Folder structure for docs
+
+```
+src/
+├── modules/
+│   ├── <module>/
+│   │   ├── <module>.controller.ts
+│   │   ├── <module>.service.ts
+│   │   ├── <module>.module.ts
+│   │   ├── dto/
+│   │   │   ├── <entity>.dto.ts          # Plain DTOs (validation only)
+│   │   │   ├── <request>.dto.ts
+│   │   │   ├── <response>.dto.ts
+│   │   │   └── docs/
+│   │   │       ├── <entity>.dto.docs.ts # Documented DTOs with @ApiProperty
+│   │   │       ├── <request>.dto.docs.ts
+│   │   │       └── <response>.dto.docs.ts
+│   │   └── docs/
+│   │       ├── <module>.swagger.ts      # Endpoint decorators
+│   │       └── <module>.tags.ts         # Tag decorator
+└── docs/
+    ├── swagger.config.ts                # Global config
+    └── swagger.setup.ts                 # Bootstrap setup
+```
+
+### Rules
+
+- **No inline Swagger in controllers.** Use custom decorators from `<module>.swagger.ts` and tag decorator from `<module>.tags.ts`.
+- **DTO split:** Plain DTOs (`.dto.ts`) for validation; documented DTOs (`.dto.docs.ts`) for Swagger with full `@ApiProperty` (description, example, type, required/enum/isArray as needed).
+- **Status codes:** Document all relevant codes (200/201/204/400/401/403/404/409/422/500).
+- **Tags:** One tag decorator per module; use lower-case plural (`users`, `blogs`, `help-desk`).
+- **Global setup:** Swagger config in `docs/swagger.config.ts`; setup in `docs/swagger.setup.ts`; expose at `/docs`.
+- **Versioning:** Controllers use `version: '1'` (or `['1','2']` for multi-version).
+- **Examples:** Provide realistic examples in `@ApiProperty`.
+- **Nested/arrays/enums:** Always declare `type`, `isArray`, and `enum`/`enumName` where applicable.
+
+### Controller pattern
+
+```typescript
+@UsersApiTag()
+@Controller({ path: "users", version: "1" })
+export class UsersController {
+  constructor(private readonly usersService: UsersService) {}
+
+  @ApiCreateUser()
+  @Post()
+  createUser(@Body() body: CreateUserDtoDocs) {
+    return this.usersService.create(body);
+  }
+}
+```
+
+### Common mistakes to avoid
+
+- ❌ Inline `@ApiOperation` / `@ApiResponse` with schemas in controllers.
+- ❌ Missing `@ApiProperty` in documented DTOs.
+- ❌ Mixing plain and documented DTOs in the same file.
+
+### Checklist (per PR)
+
+- DTOs split into plain + docs; all doc properties have `@ApiProperty`.
+- Controllers use custom decorators and tag decorators; no inline Swagger.
+- Status codes documented; examples realistic; types/enums/arrays explicit.
+- Folder structure followed; Swagger config updated with new tags when modules are added.
