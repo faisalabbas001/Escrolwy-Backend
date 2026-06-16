@@ -1,980 +1,493 @@
-# 🏦 Escrowly Backend - Complete Project Explanation
+# 🏦 Escrowly — Backend Platform
 
-A beginner-friendly guide to understanding the Escrowly backend platform - a crypto escrow and wallet management system built with microservices.
+> A production-grade, **event-driven microservices backend** for a multi-chain cryptocurrency **escrow & wallet** platform. Built with NestJS, PostgreSQL, Prisma, Kafka and Redis — with on-chain settlement across **5 blockchains**, double-entry accounting, and bank-grade security.
+
+<p align="left">
+  <img alt="Node" src="https://img.shields.io/badge/Node.js-%E2%89%A520-339933?logo=node.js&logoColor=white">
+  <img alt="NestJS" src="https://img.shields.io/badge/NestJS-10-E0234E?logo=nestjs&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white">
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white">
+  <img alt="Prisma" src="https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma&logoColor=white">
+  <img alt="Kafka" src="https://img.shields.io/badge/Apache%20Kafka-Event%20Driven-231F20?logo=apachekafka&logoColor=white">
+  <img alt="Redis" src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white">
+</p>
+
+<p align="left">
+  <a href="https://escrowly.com/"><img alt="Live" src="https://img.shields.io/badge/🌐_Live-escrowly.com-2563EB?style=for-the-badge"></a>
+</p>
+
+> 🌐 **Live platform:** [escrowly.com](https://escrowly.com/)
+
+### 🖥️ Powering the platform
+
+![Escrowly platform](../images/escrolwy-userdashbord.png)
+
+*The public-facing Escrowly experience — every escrow, wallet, payout and KYC check shown here is driven by the microservices in this repository.*
+
+![Escrowly Admin Dashboard](../images/escrolwy-admin1.png)
+
+*The admin console reads its escrow stats, revenue, payouts and user data straight from these services through the BFF gateway.*
 
 ---
 
 ## 📋 Table of Contents
 
-1. [What is Escrowly?](#what-is-escrowly)
-2. [Project Architecture](#project-architecture)
-3. [Main Features](#main-features)
-4. [How Everything Works Together](#how-everything-works-together)
-5. [Folder Structure Breakdown](#folder-structure-breakdown)
-6. [File-by-File Explanation](#file-by-file-explanation)
-7. [Workflow: From Request to Response](#workflow-from-request-to-response)
-8. [Setting Up & Running Locally](#setting-up--running-locally)
+1. [What is Escrowly?](#-what-is-escrowly)
+2. [Why this architecture matters](#-why-this-architecture-matters)
+3. [System architecture](#-system-architecture)
+4. [The microservices](#-the-microservices)
+5. [The escrow lifecycle](#-the-escrow-lifecycle)
+6. [Money & the double-entry ledger](#-money--the-double-entry-ledger)
+7. [Multi-chain wallet engine](#-multi-chain-wallet-engine)
+8. [Security model](#-security-model)
+9. [API reference](#-api-reference)
+10. [Tech stack](#-tech-stack)
+11. [Getting started](#-getting-started)
+12. [Environment variables](#-environment-variables)
+13. [Project structure](#-project-structure)
 
 ---
 
 ## 🎯 What is Escrowly?
 
-**Escrowly** is a backend platform that manages cryptocurrency transactions safely using **escrow** (a trusted third party holding money during a transaction).
+**Escrowly** is the backend for a crypto escrow marketplace. When two parties don't trust each other, Escrowly acts as the neutral middleman that **holds the funds on-chain** until both sides fulfil their side of the deal.
 
-### Core Purpose:
-- **Secure crypto transactions** - Hold cryptocurrency safely during deals
-- **Multi-user wallets** - Users can hold and manage crypto
-- **Transaction ledger** - Track all movements and balances
-- **Admin dashboard** - Manage users, content, and support tickets
-- **User authentication** - Secure login and account management
-
-### Real-World Example:
 ```
-Alice wants to buy crypto from Bob.
-↓
-Alice deposits money with Escrowly (escrow)
-↓
-Bob sees the money is held safely
-↓
-Bob delivers the crypto
-↓
-Escrowly releases the money to Bob
-↓
-Everyone gets their crypto/money safely!
+  Buyer wants to buy from Seller — but neither trusts the other.
+
+  1.  Buyer & Seller agree on an escrow (amount, asset, chain, terms)
+  2.  Buyer funds the escrow  →  funds are LOCKED by the platform
+  3.  Seller sees the funds are secured and delivers the goods/service
+  4.  Buyer inspects and confirms delivery
+  5.  Escrowly RELEASES the funds on-chain to the Seller
+        ↘ if something goes wrong → either side opens a DISPUTE → admin resolves
+```
+
+The platform supports **USDT / USDC** settlement across **Ethereum, BNB Smart Chain, Polygon, Solana and TRON**, custodial deposit wallets per user, an internal accounting ledger, KYC/AML compliance, support inquiries, transactional email, and a full admin back office.
+
+---
+
+## 💡 Why this architecture matters
+
+This isn't a monolith with a single `routes` folder. It's a **distributed system** engineered around the realities of handling other people's money:
+
+| Concern | How Escrowly solves it |
+|---|---|
+| **Money must never be lost or double-counted** | Every balance change is a **double-entry journal** (debits = credits). Nothing is mutated in place. |
+| **Services must not lose events if Kafka is down** | **Transactional Outbox pattern** — events are written to the DB in the same transaction as the state change, then relayed to Kafka. |
+| **Operations must be safely retryable** | **Idempotency keys** + `ProcessedEvent` tables guarantee an event is only acted on once. |
+| **Blockchain is async & unreliable** | A dedicated **Listener Engine** watches chains block-by-block and emits confirmed deposit events. |
+| **Blast radius must be contained** | Each domain is an **independent service with its own database schema** — auth can't write to the ledger's tables. |
+| **The frontend should talk to one door** | A **BFF (Backend-for-Frontend) gateway** authenticates every request and fans out to internal services. |
+
+---
+
+## 🏗️ System architecture
+
+```
+                          ┌──────────────────────────────┐
+                          │   Frontends (Admin + User)    │
+                          │      React / Vite SPAs        │
+                          └───────────────┬───────────────┘
+                                          │  HTTPS  /api/v1/*
+                                          ▼
+                          ┌──────────────────────────────┐
+                          │     BFF  —  API Gateway       │   • Validates JWT
+                          │        (Port 3001)            │   • Routes & aggregates
+                          └───────────────┬───────────────┘   • Single public surface
+        ┌──────────────┬──────────────┬───┴───────────┬──────────────┬──────────────┐
+        ▼              ▼              ▼               ▼              ▼              ▼
+   ┌─────────┐    ┌─────────┐   ┌──────────┐    ┌─────────┐   ┌──────────┐   ┌────────────┐
+   │  Auth   │    │ Escrow  │   │  Wallet  │    │ Ledger  │   │ Inquiry  │   │   Admin    │
+   │  2FA    │    │  State  │   │ On-chain │    │ Double  │   │ Tickets  │   │ Blog/Help  │
+   │  JWT    │    │ Machine │   │ Payouts  │    │  Entry  │   │ + WS     │   │  + S3      │
+   └────┬────┘    └────┬────┘   └────┬─────┘    └────┬────┘   └────┬─────┘   └─────┬──────┘
+        │              │             │               │             │              │
+        └──────────────┴──────────────┴──── Apache Kafka ──────────┴──────────────┘
+                        (transactional outbox · event-driven choreography)
+        ┌──────────────┬──────────────┬───────────────┬──────────────┐
+        ▼              ▼              ▼               ▼              ▼
+  ┌────────────┐ ┌────────────┐ ┌──────────────┐ ┌────────────┐ ┌────────────┐
+  │ Compliance │ │Notification│ │   Listener   │ │ Reporting  │ │  Redis 7   │
+  │  (Persona) │ │  (Resend)  │ │    Engine    │ │ & Alerts   │ │  sessions  │
+  │  KYC/AML   │ │   email    │ │  5 chains    │ │            │ │  + cache   │
+  └────────────┘ └────────────┘ └──────────────┘ └────────────┘ └────────────┘
+
+                  ┌─────────────────────────────────────────────┐
+                  │   PostgreSQL 16  —  schema-isolated per svc  │
+                  │  auth_db · escrow_db · wallet_db · ledger_db │
+                  │  inquiry_db · notification_db · admin_db ·   │
+                  │  compliance_db · listener_engine_db          │
+                  └─────────────────────────────────────────────┘
+```
+
+**Communication patterns**
+
+- **Synchronous** (request/response): Frontend → BFF → service, for reads and user-initiated commands.
+- **Asynchronous** (events): services publish domain events (`escrow.completed`, `wallet.deposit.detected`, …) to **Kafka**; interested services react independently (e.g. Notification sends an email, Ledger settles funds, Compliance updates risk).
+
+---
+
+## 🧩 The microservices
+
+| Service | Port | Responsibility | Database schema |
+|---|---|---|---|
+| **BFF** | 3001 | API gateway — JWT validation, routing, response aggregation. The only public entry point. | — |
+| **Auth** | 3000 | Registration, login, JWT issuance, **TOTP 2FA**, backup codes, password reset, OAuth, profile, KYC status mirror. | `auth_db` |
+| **Escrow** | 3004 | Core **escrow state machine** + immutable transition audit trail, fee splits, SLA reminders. | `escrow_db` |
+| **Wallet** | 3004 | Custodial wallet generation, on-chain **deposit detection & payout execution**, hot/funding/cold platform keys. | `wallet_db` |
+| **Ledger** | 3005 | **Double-entry accounting** — accounts, journals, entries, reservations, internal/external transfers. | `ledger_db` |
+| **Inquiry** | 3003 | Support tickets & messaging tied to escrows, attachments, **real-time chat via Socket.IO**. | `inquiry_db` |
+| **Notification** | 3005 | Email delivery via **Resend**, per-user notification settings, Handlebars templates, delivery logs. | `notification_db` |
+| **Listener Engine** | 3010–3015 | Block-by-block **blockchain event listeners** across 5 chains; emits confirmed transfer events. | `listener_engine_db` |
+| **Compliance** | — | **KYC/AML** via **Persona**, risk scoring, per-user limits, webhook ingestion, audit log. | `compliance_db` |
+| **Admin** | 3002 | Blog CMS, Help Desk / FAQ, file uploads to **AWS S3**. | `admin_db` |
+| **Reporting** | — | Reporting & operational alerting. | — |
+
+**Shared packages** (`/packages`): `auth-common` (JWT guards & decorators), `kafka-core` (consumer/producer patterns), `kafka-publisher` (outbox relay), `shared-config`, `chain-config` (per-chain blockchain settings).
+
+---
+
+## 🔄 The escrow lifecycle
+
+The Escrow service is a **finite state machine**. Every transition is recorded as an immutable `EscrowTransition` row (who changed it, from→to, reason, metadata) — a tamper-evident audit trail.
+
+```
+   ┌───────────┐  accept   ┌──────────┐  pay     ┌──────────┐  ship     ┌──────────┐
+   │ AGREEMENT │ ────────► │ ACCEPTED │ ───────► │ PAYMENT  │ ────────► │ DELIVERY │
+   └───────────┘           └──────────┘          └──────────┘           └────┬─────┘
+        │  cancel                                  funds reserved             │ inspect
+        ▼                                          in ledger                  ▼
+   ┌───────────┐                                                        ┌────────────┐
+   │ CANCELLED │                                                        │ INSPECTION │
+   └───────────┘                                                        └─────┬──────┘
+                                                          satisfied ┌─────────┴────────┐ not satisfied
+                                                                    ▼                  ▼
+                                                            ┌────────────┐       ┌──────────┐
+                                                            │ COMPLETION │       │ DISPUTED │
+                                                            │ funds → ✅ │       │ admin ⚖  │
+                                                            │   seller   │       └──────────┘
+                                                            └────────────┘
+```
+
+| Step | Endpoint | What happens |
+|---|---|---|
+| Create | `POST /escrows` | New escrow in `agreement`; `escrow.created` event published. |
+| Accept | `POST /escrows/:id/accept` | Parties agree → `accepted`; Ledger **reserves** buyer funds. |
+| Payment | `POST /escrows/:id/payment` | Buyer funds the escrow on-chain → `payment`. |
+| Delivery | `POST /escrows/:id/delivery` | Seller marks goods delivered → `delivery`. |
+| Inspection | `POST /escrows/:id/inspection` | Buyer confirms receipt → `inspection`. |
+| Complete | `POST /escrows/:id/complete` | Funds **released on-chain** to seller, fees taken → `completion`. |
+| Dispute | `POST /escrows/:id/dispute` | Either party escalates → `disputed`; admin resolves (refund / split / release). |
+| Cancel | `POST /escrows/:id/cancel` | Aborts before funding → `cancelled`. |
+
+**Fees** are first-class: `EscrowFeeSplit` records exactly what % the buyer, seller and broker each pay, and fees post to the platform's ledger account on completion.
+
+---
+
+## 💰 Money & the double-entry ledger
+
+Escrowly never just "updates a balance." Every movement of value is a **balanced journal** — total debits always equal total credits, the same principle banks use.
+
+```
+   Journal: escrow_pay_released
+   ┌────────────────────────────────────┬──────────────┐
+   │ Account                            │   Amount     │
+   ├────────────────────────────────────┼──────────────┤
+   │ Platform escrow-holding (reserved) │   −1,000 USDT │   (debit)
+   │ Seller spendable                   │   +  970 USDT │   (credit)
+   │ Platform fees                      │   +   30 USDT │   (credit)
+   └────────────────────────────────────┴──────────────┘
+                                            Σ = 0  ✅ always balances
+```
+
+**Core ledger models**
+
+- **Account** — owned by a `user` or the `platform`, with a `purpose` (`spendable`, `reserved`, `fees`, `treasury_hot`), per `asset` + `chain`.
+- **Journal** + **Entry** — a journal groups the `±` entries of one logical event; entries are the individual debits/credits.
+- **Reservation** — funds locked for an in-flight escrow (`reserved` → `released` / `cancelled`).
+- **Transfer** — internal (user→user) or external (user→on-chain address) value movement, guarded by an `idempotencyKey`.
+
+Because everything is journaled, the platform can reconstruct any balance at any point in time and reconcile against the chain.
+
+---
+
+## ⛓️ Multi-chain wallet engine
+
+The Wallet service is fully custodial and chain-agnostic, supporting three address families covering **5 networks**:
+
+| Family | Chains | Library |
+|---|---|---|
+| `evm` | Ethereum · BNB Smart Chain · Polygon | **ethers v6** |
+| `sol` | Solana | **@solana/web3.js** |
+| `trc` | TRON | **tronweb** |
+
+**How deposits & payouts flow**
+
+```
+  DEPOSIT                                   PAYOUT
+  ───────                                   ──────
+  User gets a unique deposit address        Ledger emits a payout request (Kafka)
+        │                                          │
+  Listener Engine scans blocks  ───────►    Wallet picks it up (idempotent on eventId)
+        │ confirmed transfer                       │
+  DepositTransaction recorded                Signs & broadcasts on-chain tx
+        │                                          │
+  Ledger credits user's spendable            PayoutRequest → fulfilled (txHash stored)
+                                              └ retries logged in PayoutAttempt on failure
+```
+
+**Key management** is tiered — `hot`, `funding`, and `cold` `PlatformKey`s. Private keys are encrypted either locally or with **AWS KMS** (`ENCRYPTION_MODE=kms`). An auto-funding mechanism tops up hot wallets from funding wallets when they fall below per-chain thresholds.
+
+---
+
+## 🔐 Security model
+
+- **Passwords** hashed with **Argon2** (memory-hard, the current best practice).
+- **JWT** access tokens (15 min) + refresh tokens (7 days), HS256, with Redis-backed session tracking for real logout / logout-all.
+- **TOTP 2FA** (`otplib`) with QR provisioning and encrypted single-use **backup codes**.
+- **Role-based access** — `user`, `staff-website`, `super-admin`; `@Public()` decorator opts routes out of the global JWT guard.
+- **Service-to-service auth** via a shared `SERVICE_TO_SERVICE_TOKEN` — internal services are never publicly exposed.
+- **KYC/AML** through Persona with risk records and per-user transaction limits.
+- **Private keys** encrypted at rest (local or AWS KMS).
+- **Idempotency & outbox** prevent double-spends and lost events under failure.
+
+---
+
+## 📡 API reference
+
+All routes are exposed through the **BFF** under the base path **`/api/v1`** and require a JWT unless marked _public_. Interactive **Swagger / OpenAPI** docs are served per service.
+
+<details>
+<summary><b>🔑 Auth</b></summary>
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/auth/signup` | Register _(public)_ |
+| POST | `/auth/login` | Login, optional MFA code _(public)_ |
+| POST | `/auth/token/refresh` | Refresh access token _(public)_ |
+| GET | `/auth/me` | Current user |
+| PATCH | `/auth/profile` | Update profile |
+| POST | `/auth/logout` · `/auth/logout-all` | End session(s) |
+| POST | `/auth/2fa/setup` · `/2fa/disable` · `GET /2fa/status` | Manage 2FA |
+| POST | `/auth/2fa/backup/consume` | Use a backup code |
+| POST | `/auth/password/forgot` · `/password/reset` | Reset flow _(public)_ |
+| POST | `/auth/password/change` | Change password |
+| POST | `/auth/oauth/:provider/start` · `/callback` | OAuth _(public)_ |
+</details>
+
+<details>
+<summary><b>🤝 Escrow</b></summary>
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/escrows` | Create escrow |
+| GET | `/escrows/me` | My escrows |
+| GET | `/escrows/:id` · `/:id/history` | Escrow + state history |
+| POST | `/escrows/:id/accept` · `/payment` · `/delivery` · `/inspection` · `/complete` · `/cancel` · `/dispute` | Drive the state machine |
+</details>
+
+<details>
+<summary><b>💵 Ledger</b></summary>
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/ledger/accounts/:id/balance` | Account balance |
+| GET | `/ledger/users/:id/balances` | All balances for a user |
+| POST/GET | `/ledger/transfers` · `/transfers/:id` | Transfers |
+| POST/GET | `/ledger/internal/transfer` · `/:id` | User-to-user transfer |
+| POST/GET | `/ledger/external/transfer` · `/:id` | On-chain withdrawal |
+</details>
+
+<details>
+<summary><b>👛 Wallet</b></summary>
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/wallets?user_id=` | User wallets |
+| GET | `/wallets/platform` · `/platform/balances` | Platform wallets & balances |
+</details>
+
+<details>
+<summary><b>💬 Inquiry</b></summary>
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/inquiries` | Open inquiry |
+| GET | `/inquiries/:inquiryId` · `/escrow/:escrowId` | Fetch inquiry |
+| POST | `/inquiries/:inquiryId/close` | Close |
+| POST/GET | `/inquiries/:inquiryId/messages` | Messages (paginated) |
+| POST/GET | `/inquiries/:inquiryId/attachments` · `/upload` | Attachments |
+</details>
+
+<details>
+<summary><b>🔔 Notifications & 📰 Admin/Blog</b></summary>
+
+| Method | Path | Description |
+|---|---|---|
+| GET/PUT | `/notifications/settings` | Notification preferences |
+| GET | `/notifications/user/:userId` | Notification history |
+| GET | `/admin/blogs` · `/blogs/:id` · `/blogs/slug/:slug` | Blog (public reads) |
+| POST/PATCH/DELETE | `/admin/blogs` · `/blogs/:id` | Manage posts |
+| CRUD | `/admin/blogs/categories*` | Blog categories |
+| POST | `/admin/upload` | Upload file to S3 |
+</details>
+
+---
+
+## 🛠️ Tech stack
+
+| Layer | Technology |
+|---|---|
+| **Runtime** | Node.js ≥ 20, TypeScript 5.9 |
+| **Framework** | NestJS 10 (modular microservices) |
+| **Database** | PostgreSQL 16 (schema-per-service), Prisma 6 ORM |
+| **Messaging** | Apache Kafka (KafkaJS) — Redpanda-compatible in dev |
+| **Cache / sessions** | Redis 7 (ioredis) |
+| **Auth** | JWT (`@nestjs/jwt`, Passport), Argon2, otplib (TOTP), qrcode |
+| **Blockchain** | ethers v6, @solana/web3.js, tronweb |
+| **Cloud** | AWS S3 (storage), AWS KMS (key encryption) |
+| **Email** | Resend |
+| **KYC/AML** | Persona |
+| **Real-time** | Socket.IO |
+| **Docs** | Swagger / OpenAPI (`@nestjs/swagger`) |
+| **Validation** | class-validator, class-transformer |
+| **Containerization** | Docker + Docker Compose |
+
+---
+
+## 🚀 Getting started
+
+### Prerequisites
+
+- **Node.js ≥ 20** and **npm ≥ 10**
+- **Docker** & **Docker Compose** (for Postgres, Redis, Kafka)
+
+### Run the full stack
+
+```bash
+# 1. Clone & install
+git clone <repo-url>
+cd escrowly-backend
+npm install
+
+# 2. Configure environment (per service .env files — see below)
+cp .env.example .env
+
+# 3. Bring up infrastructure + all services
+npm run docker:up        # start everything
+npm run docker:logs      # stream logs
+npm run docker:down      # stop everything
+```
+
+### Run a single service in watch mode
+
+```bash
+npm run auth:dev                 # start the Auth service with hot reload
+npm run auth:prisma:migrate      # apply DB migrations
+npm run auth:prisma:studio       # visual DB browser
+npm run auth:prisma:generate     # regenerate the Prisma client
+```
+
+> The same `:<svc>:` script pattern works for each service (`auth`, `escrow`, `wallet`, `ledger`, …).
+
+### Handy scripts
+
+```bash
+npm run docker:restart           # restart services
+npm run docker:clean             # tear down + remove volumes
+npm run test:bff                 # smoke-test the gateway
+npm run test:auth:signup         # exercise the signup flow
+npm run test:solana:deposit      # simulate a Solana deposit
+npm run test:tron:withdrawal     # simulate a TRON payout
 ```
 
 ---
 
-## 🏗️ Project Architecture
+## ⚙️ Environment variables
 
-### **High-Level Overview**
+Each service reads its own `.env`. The most important keys:
 
-```
-                    ┌─────────────────────┐
-                    │   Frontend (React)  │
-                    │   Port 5173         │
-                    └──────────┬──────────┘
-                               │ HTTP Requests
-                               ↓
-                    ┌─────────────────────┐
-                    │    BFF Gateway      │ ← Routes requests
-                    │   (Port 3000)       │   to right service
-                    └────┬────────┬───────┘
-         ┌────────────────┴────────┴──────────────┐
-         ↓                ↓                        ↓
-    ┌─────────┐    ┌─────────┐    ┌──────────┐
-    │   Auth  │    │  Admin  │    │ (Future) │
-    │ Service │    │ Service │    │ Services │
-    │ 3001    │    │ 3002    │    │          │
-    └────┬────┘    └────┬────┘    └──────────┘
-         │              │
-    ┌────┴──────────────┴────┐
-    │                        │
-    │   PostgreSQL (Aurora)  │
-    │   Single Database      │
-    │   Multiple Schemas:    │
-    │                        │
-    │  - auth_db ✅          │
-    │  - admin_db ✅         │
-    │  - wallet_db (future)  │
-    │  - ledger_db (future)  │
-    │  - ... more schemas    │
-    │                        │
-    └────────────────────────┘
-    
-    Supporting Services (Docker):
-    - Redis (caching, sessions)
-    - Kafka (events)
-    - Mailhog (email testing)
-```
+```bash
+# ── Core ───────────────────────────────────────────────
+NODE_ENV=development
+PORT=3000
+SERVICE_NAME=auth
+LOG_LEVEL=info
 
-### **Key Architectural Principles**
+# ── Database (schema-isolated per service) ─────────────
+DATABASE_URL=postgresql://user:pass@localhost:5432/escrowly?schema=auth_db
 
-1. **Microservices**: Each service handles one responsibility
-2. **Multi-Schema Database**: Single PostgreSQL instance with separate schemas for each service
-3. **API Gateway Pattern**: BFF service routes all requests to appropriate backends
-4. **JWT Authentication**: Secure token-based auth
-5. **Shared Code**: Common configurations in `packages/shared-config`
+# ── Auth / JWT ─────────────────────────────────────────
+JWT_SECRET=<min-32-chars-shared-across-services>
+JWT_ACCESS_TOKEN_EXPIRY=15m
+JWT_REFRESH_TOKEN_EXPIRY=7d
+SERVICE_TO_SERVICE_TOKEN=<internal-service-token>
 
----
+# ── Redis ──────────────────────────────────────────────
+REDIS_URL=redis://:password@localhost:6379
 
-## ✨ Main Features
+# ── Kafka ──────────────────────────────────────────────
+KAFKA_ENABLED=true
+KAFKA_BROKERS=localhost:9092
+KAFKA_CLIENT_ID=auth-service
+KAFKA_GROUP_ID=auth-consumer
 
-### **1. User Authentication (Auth Service)**
-- ✅ User registration (signup)
-- ✅ User login with JWT tokens
-- ✅ Password hashing (secure)
-- ✅ Session management with Redis
-- ✅ Token refresh capability
-- ✅ User profile management
-- 🔜 Multi-factor authentication (future)
+# ── Blockchain RPCs ────────────────────────────────────
+ETH_RPC_URL=...        BSC_RPC_URL=...      POLYGON_RPC_URL=...
+SOLANA_RPC_URL=...     TRON_RPC_URL=...
 
-### **2. Admin Dashboard (Admin Service)**
-- ✅ Blog management (create, read, update, delete posts)
-- ✅ Help desk/FAQ system (categories, questions)
-- ✅ File uploads to AWS S3
-- ✅ User management (future)
-- ✅ System health monitoring
+# ── Wallet key management ──────────────────────────────
+ENCRYPTION_MODE=local            # or "kms"
+WALLET_ENCRYPTION_KEY=...        # local mode only
+EVM_HOT_WALLET=...   SOL_HOT_WALLET=...   TRC_HOT_WALLET=...
+EVM_FUNDING_THRESHOLD=0.1   EVM_FUNDING_AMOUNT=0.5   # auto top-up
 
-### **3. Future Services (Planned)**
-- **Wallet Service** - Cryptocurrency wallet management
-- **Ledger Service** - Transaction history and accounting
-- **Escrow Service** - Escrow transactions and dispute handling
-- **Compliance Service** - KYC/AML verification
-- **Reporting Service** - Analytics and reports
-- And more...
+# ── AWS ────────────────────────────────────────────────
+AWS_ACCESS_KEY_ID=...   AWS_SECRET_ACCESS_KEY=...
+AWS_REGION=us-east-1    S3_BUCKET=...
 
----
+# ── Integrations ───────────────────────────────────────
+RESEND_API_KEY=...               # email
+PERSONA_API_KEY=...              # KYC
+PERSONA_TEMPLATE_ID=...
 
-## 🔄 How Everything Works Together
-
-### **User Registration Flow**
-
-```
-Frontend (React)
-    ↓ POST /api/v1/auth/signup
-    ↓ {"email": "john@example.com", "password": "..."}
-    ↓
-BFF Gateway (validates request format)
-    ↓ forwards to Auth Service
-    ↓
-Auth Service
-    ↓ creates user in database
-    ↓ hashes password with Argon2
-    ↓ creates JWT token
-    ↓ stores session in Redis
-    ↓
-Returns to Frontend
-    ↓ {"accessToken": "jwt...", "refreshToken": "..."}
-    ↓
-Frontend stores token in browser
-    ↓ uses token for future API calls
-```
-
-### **User Login Flow**
-
-```
-Frontend
-    ↓ POST /api/v1/auth/login
-    ↓ {"email": "john@example.com", "password": "..."}
-    ↓
-BFF Gateway
-    ↓
-Auth Service
-    ↓ finds user by email
-    ↓ verifies password hash
-    ↓ generates JWT token
-    ↓ creates session in Redis
-    ↓
-Returns JWT token to Frontend
-```
-
-### **Protected API Request Flow**
-
-```
-Frontend (with Authorization token)
-    ↓ GET /api/v1/admin/blogs
-    ↓ Header: "Authorization: Bearer jwt_token_here"
-    ↓
-BFF Gateway
-    ↓ validates JWT signature
-    ↓ if invalid → returns 401 Unauthorized
-    ↓ if valid → extracts user info → forwards request
-    ↓
-Admin Service (receives authenticated request)
-    ↓ knows which user is making request
-    ↓ retrieves blogs from database
-    ↓
-Returns blog list to Frontend
+# ── CORS ───────────────────────────────────────────────
+FRONTEND_URL=http://localhost:5173
 ```
 
 ---
 
-## 📁 Folder Structure Breakdown
-
-### **Root Level**
+## 📂 Project structure
 
 ```
 escrowly-backend/
-├── README.md                    # Project overview
-├── SETUP_GUIDE.md               # How to get started locally
-├── IMPLEMENTATION_COMPLETE.md   # What's been built
-├── SECRETS_STRATEGY_FINAL.md    # How secrets are managed
-├── SERVICES_OVERVIEW.md         # All microservices listed
-├── package.json                 # Root workspace config
-├── docker-compose.yml           # Local development services
-│
-├── services/                    # All microservices
-├── packages/                    # Shared code
-├── infra/                       # Cloud infrastructure
-└── scripts/                     # Utility scripts
-```
-
-### **services/ - The Core Microservices**
-
-```
-services/
-├── auth/                        ✅ READY - User authentication
-│   ├── src/
-│   │   ├── main.ts             # App startup
-│   │   ├── app.module.ts       # Root module (imports all features)
-│   │   ├── app.service.ts      # Service-level logic
-│   │   ├── app.controller.ts   # HTTP endpoints
-│   │   │
-│   │   ├── auth/               # Authentication logic
-│   │   │   ├── auth.service.ts       # Signup, login, token logic
-│   │   │   ├── auth.controller.ts    # HTTP endpoints (/auth/*)
-│   │   │   ├── jwt.service.ts        # JWT token creation/validation
-│   │   │   ├── session.service.ts    # Redis session management
-│   │   │   └── dto/                  # Data models
-│   │   │
-│   │   ├── health/             # Health check endpoints
-│   │   │   ├── health.service.ts
-│   │   │   ├── health.controller.ts
-│   │   │   └── health.module.ts
-│   │   │
-│   │   ├── prisma/             # Database client
-│   │   │   ├── prisma.service.ts    # Handles DB connections
-│   │   │   └── prisma.module.ts
-│   │   │
-│   │   └── test/               # Test utilities
-│   │
-│   ├── prisma/
-│   │   ├── schema.prisma       # Database tables for auth_db
-│   │   └── migrations/         # Database change history
-│   │
-│   ├── test/                   # End-to-end tests
-│   ├── package.json            # Dependencies
-│   ├── tsconfig.json           # TypeScript config
-│   └── Dockerfile              # Docker image def
-│
-├── admin/                        🔜 Blog & Help Desk management
-│   ├── src/
-│   │   ├── main.ts
-│   │   ├── app.module.ts
-│   │   │
-│   │   ├── blog/               # Blog management
-│   │   │   ├── blog.service.ts
-│   │   │   ├── blog.controller.ts
-│   │   │   └── dto/
-│   │   │
-│   │   ├── help-desk/          # FAQ/Support system
-│   │   │   ├── help-desk.service.ts
-│   │   │   ├── help-desk.controller.ts
-│   │   │   └── dto/
-│   │   │
-│   │   ├── upload/             # File uploads to S3
-│   │   │   ├── s3.service.ts
-│   │   │   ├── upload.controller.ts
-│   │   │   └── upload.module.ts
-│   │   │
-│   │   ├── cache/              # Redis caching
-│   │   │   ├── cache.service.ts
-│   │   │   └── cache.module.ts
-│   │   │
-│   │   ├── health/
-│   │   ├── prisma/
-│   │   └── test/
-│   │
-│   ├── prisma/
-│   │   ├── schema.prisma       # Database tables for admin_db
-│   │   └── migrations/
-│   │
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── Dockerfile
-│
-└── bff/                         🔜 API Gateway (routes requests)
-    ├── src/
-    │   ├── main.ts
-    │   ├── app.module.ts
-    │   │
-    │   ├── auth/               # Routes to Auth Service
-    │   │   └── (auth endpoints)
-    │   │
-    │   ├── admin/              # Routes to Admin Service
-    │   │   └── (admin endpoints)
-    │   │
-    │   ├── proxy/              # HTTP client for backend calls
-    │   │   └── proxy.service.ts
-    │   │
-    │   ├── common/             # Shared utilities
-    │   │   └── (guards, interceptors)
-    │   │
-    │   └── health/
-    │
-    ├── package.json
-    ├── tsconfig.json
-    └── Dockerfile
-```
-
-### **packages/ - Shared Code**
-
-```
-packages/
-└── shared-config/              # Used by ALL services
-    ├── src/
-    │   ├── secrets.service.ts  # Manages API keys, passwords, etc
-    │   ├── secrets.module.ts   # NestJS module
-    │   └── index.ts            # Exports for other services
-    ├── package.json            # Published to npm as @escrowly/shared-config
-    └── tsconfig.json
-```
-
-**Why?** Instead of each service copying secrets code, they all import from this shared package. Change once, affects all services! ✅
-
-### **infra/ - Cloud Infrastructure Setup**
-
-```
-infra/
-└── cdk/                         # AWS CDK (Infrastructure as Code)
-    ├── bin/
-    │   ├── dev.ts              # Local dev stack configuration
-    │   └── ec2.ts              # Production EC2 stack config
-    │
-    ├── lib/
-    │   ├── dev-stack.ts        # Creates: Aurora, KMS, S3
-    │   └── ec2-stack.ts        # Creates: EC2, RDS, etc
-    │
-    ├── package.json
-    ├── tsconfig.json
-    └── cdk.json                # CDK settings
-```
-
-**Purpose:** Automatically creates AWS resources (databases, encryption, storage) in the cloud.
-
-### **scripts/ - Utility Scripts**
-
-```
-scripts/
-├── init-schemas.sql            # Creates auth_db, admin_db, etc schemas
-├── migrate-auth.js             # Apply database migrations
-├── test-auth-signup.js         # Test user registration
-├── test-auth-login.js          # Test user login
-├── test-bff.js                 # Test BFF gateway
-└── ... (more test scripts)
+├── services/                  # 11 independent NestJS microservices
+│   ├── bff/                   # API gateway (public surface)
+│   ├── auth/                  # identity, JWT, 2FA, OAuth
+│   ├── escrow/                # escrow state machine + audit trail
+│   ├── wallet/                # custodial wallets, on-chain payouts
+│   ├── ledger/                # double-entry accounting
+│   ├── inquiry/               # support tickets + Socket.IO chat
+│   ├── notification/          # Resend email + templates
+│   ├── listener-engine/       # blockchain block scanners (5 chains)
+│   ├── compliance/            # Persona KYC/AML, risk, limits
+│   ├── admin/                 # blog CMS, help desk, S3 uploads
+│   └── reporting/             # reporting & alerts
+├── packages/                  # shared libraries
+│   ├── auth-common/           # JWT guards, decorators
+│   ├── kafka-core/            # producer/consumer patterns
+│   ├── kafka-publisher/       # transactional outbox relay
+│   ├── shared-config/         # common configuration
+│   └── chain-config/          # per-chain blockchain config
+├── scripts/                   # DB init & helper scripts
+├── docker-compose.yml         # full-stack orchestration
+└── package.json               # workspace root + scripts
 ```
 
 ---
 
-## 📄 File-by-File Explanation
-
-### **Auth Service - Core Files**
-
-#### `services/auth/src/main.ts`
-**What it does:** Starts the Auth Service application
-
-**Key steps:**
-1. Creates NestJS app
-2. Enables CORS (allows requests from frontend)
-3. Sets up API versioning (`/api/v1/...`)
-4. Creates Swagger documentation
-5. Starts server on port 3001
-
-**Simple analogy:** This is like the "On" switch for the Auth Service. It turns everything on and gets ready to receive requests.
-
----
-
-#### `services/auth/src/app.module.ts`
-**What it does:** Organizes all the features the service has
-
-**Imports (loads these features):**
-- `ConfigModule` - Load environment variables from `.env`
-- `SecretsModule` - Access API keys and passwords securely
-- `PrismaModule` - Talk to database
-- `HealthModule` - Report if service is healthy
-- `AuthModule` - Signup, login functionality
-
-**Simple analogy:** This is like a restaurant's organization chart. It says "we have a kitchen module, a waitstaff module, a cashier module" - all the departments needed to run.
-
----
-
-#### `services/auth/src/auth/auth.service.ts`
-**What it does:** The actual login and signup logic
-
-**Main functions:**
-- `signup(email, password)` - Create new user
-- `login(email, password)` - Validate user exists and password is correct
-- `refreshToken()` - Generate new JWT token
-
-**How signup works:**
-```typescript
-1. Check if email already registered
-2. Hash password with Argon2 (very secure)
-3. Create user in database
-4. Generate JWT token
-5. Create session in Redis
-6. Return tokens to user
-```
-
-**Simple analogy:** This is the bouncer at the club. They check your ID, verify you're allowed in, then give you a wristband (token).
-
----
-
-#### `services/auth/src/auth/jwt.service.ts`
-**What it does:** Creates and validates JWT tokens
-
-**JWT Token explained:**
-```
-JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-
-Parts:
-[Header].[Payload].[Signature]
-
-Header: Algorithm and type
-Payload: User info (id, email, expiration)
-Signature: Proof it wasn't tampered with (secret key)
-```
-
-**Functions:**
-- `generateToken(userId)` - Creates a new JWT
-- `validateToken(token)` - Checks if JWT is real and not expired
-
-**Simple analogy:** JWT is like a passport. It contains your info, has a security feature (signature), and expires at a certain date.
-
----
-
-#### `services/auth/src/auth/session.service.ts`
-**What it does:** Manages user sessions in Redis (cache)
-
-**Why separate from JWT?**
-- JWT is stateless (no server memory needed)
-- Sessions track active users (server memory used)
-- Together they're very secure
-
-**Functions:**
-- `createSession(userId)` - Record that user just logged in
-- `getSession(token)` - Check if user has valid session
-- `destroySession(token)` - Logout user
-
-**Simple analogy:** While JWT is your passport, sessions are like check-in at a hotel. You have a room number (token) and the hotel checks you haven't checked out yet.
-
----
-
-#### `services/auth/prisma/schema.prisma`
-**What it does:** Defines database tables for auth_db
-
-**Main tables:**
-
-```prisma
-User {
-  id: UUID
-  email: Text (unique)
-  phone: Text
-  role: "user" | "super-admin" | "staff-website"
-  status: "active" | "locked" | "disabled"
-  kycStatus: "not_started" | "pending" | "approved" | "rejected"
-  displayName, companyName, etc.
-  createdAt, updatedAt, deletedAt
-}
-
-AuthCredential {
-  id: UUID
-  userId: FK → User
-  passwordHash: Text (hashed, NOT plain password!)
-  mfaEnabled: Boolean
-  oauthProvider, oauthSubject: For OAuth login
-}
-
-UserProfile {
-  id: UUID
-  userId: FK → User
-  (extended user info)
-}
-```
-
-**What it DOESN'T store:**
-- Plain passwords ❌ (only hashes)
-- API keys ❌ (use SecretsService)
-- Private keys ❌ (never in database)
-
-**Simple analogy:** This is the blueprint for the filing cabinets. It says "we have a drawer for users, a drawer for credentials, a drawer for profiles."
-
----
-
-### **Admin Service - Core Files**
-
-#### `services/admin/src/main.ts`
-**What it does:** Same as Auth, but for Admin Service on port 3002
-
----
-
-#### `services/admin/src/blog/blog.service.ts`
-**What it does:** CRUD operations for blog posts
-
-**Functions:**
-- `createBlog(title, content)` - Write new post
-- `getBlog(id)` - Read one post
-- `getAllBlogs()` - List all posts
-- `updateBlog(id, content)` - Edit post
-- `deleteBlog(id)` - Remove post
-
-**Simple analogy:** This is the blog writer's tool. Create, read, update, delete - like a notepad app.
-
----
-
-#### `services/admin/src/help-desk/help-desk.service.ts`
-**What it does:** Manage FAQs and support categories
-
-**Features:**
-- Create categories (e.g., "How to transfer?", "Security")
-- Create questions in each category
-- Create answers to questions
-- Organization system for support content
-
-**Simple analogy:** Think of it like organizing a customer service FAQ section. Categories → Questions → Answers.
-
----
-
-#### `services/admin/src/upload/s3.service.ts`
-**What it does:** Upload files to AWS S3 (cloud storage)
-
-**Functions:**
-- `uploadFile(file)` - Send file to AWS
-- `getFileUrl(key)` - Get public URL to download file
-- `deleteFile(key)` - Remove file from AWS
-
-**Simple analogy:** This is like FedEx for files. You give it a file, it stores it safely in the cloud, and gives you a tracking number (URL) to retrieve it.
-
----
-
-### **BFF Service - API Gateway**
-
-#### `services/bff/src/main.ts`
-**What it does:** Start the gateway on port 3000
-
----
-
-#### `services/bff/src/app.module.ts`
-**What it does:** Sets up request routing
-
-**Key parts:**
-- `ProxyModule` - HTTP client to call Auth/Admin services
-- `AuthModule` - Routes `/auth/*` to Auth Service
-- `AdminModule` - Routes `/admin/*` to Admin Service
-- `JwtAuthGuard` - Validates tokens on ALL requests
-
-**Simple analogy:** BFF is like a receptionist at an office building. You ask them "where's the accounting department?" and they point you there.
-
----
-
-#### `services/bff/src/common/jwt-auth.guard.ts`
-**What it does:** Validates every incoming request has a valid JWT token
-
-**Flow:**
-```
-Request comes in with token
-    ↓
-Guard extracts token from header
-    ↓
-Guard validates token signature
-    ↓
-Guard checks if token expired
-    ↓
-If invalid → return 401 Unauthorized
-If valid → allow request through
-```
-
-**Simple analogy:** This is airport security. Your token is your boarding pass. If it's invalid or expired, you can't board.
-
----
-
-### **Shared Config Package**
-
-#### `packages/shared-config/src/secrets.service.ts`
-**What it does:** Safely access API keys, passwords, database URLs
-
-**How it works:**
-
-```typescript
-// In development:
-const jwtSecret = process.env.JWT_SECRET  // from .env file
-
-// In production:
-const jwtSecret = getFromSecretsManager()  // from AWS
-
-// Code doesn't change! ✅
-```
-
-**Functions:**
-- `getJwtSecret()` - JWT signing key
-- `getDatabaseUrl()` - PostgreSQL connection
-- `getRedisUrl()` - Redis connection
-- `getS3Config()` - AWS S3 credentials
-
-**Why this exists:** 
-
-Never hardcode passwords in code! They'd be visible in Git history and very insecure. Instead, use environment variables or secret managers.
-
-**Simple analogy:** This is a safe deposit box. You don't keep your valuable passwords lying around. You store them securely and retrieve only when needed.
-
----
-
-### **Docker Compose Configuration**
-
-#### `docker-compose.yml`
-**What it does:** Defines all local development services
-
-```yaml
-Services started:
-1. PostgreSQL (port 5433)      - Main database
-2. Redis (port 6379)           - Caching & sessions
-3. Redpanda (port 9092)        - Event streaming (Kafka)
-4. Mailhog (port 8025)         - Email testing (no real emails sent)
-5. PgAdmin (port 5050)         - Database GUI
-```
-
-**Why local?** These run on your computer, so:
-- ✅ No AWS costs
-- ✅ Fast (no network)
-- ✅ Easy to reset
-- ✅ Works offline
-
-**Simple analogy:** This is like a miniature version of the entire system running on your laptop.
-
----
-
-### **Database Initialization**
-
-#### `scripts/init-schemas.sql`
-**What it does:** Creates empty database schemas when PostgreSQL starts
-
-**Schemas created:**
-```sql
-auth_db        -- Auth Service will use this
-admin_db       -- Admin Service will use this
-wallet_db      -- Wallet Service (future) will use this
-ledger_db      -- Ledger Service (future) will use this
-escrow_db      -- Escrow Service (future) will use this
-... and more
-```
-
-**Why separate schemas?**
-```
-✅ One database (easy to backup)
-✅ Multiple isolated schemas (services don't interfere)
-✅ Single connection string (simpler config)
-✅ Easy to manage all schemas in one place
-```
-
-**Simple analogy:** Like one office building with separate departments. One landlord (database) but multiple floor plans (schemas).
-
----
-
-## 🔄 Workflow: From Request to Response
-
-### **Example: User Registration**
-
-Let's follow a signup request step-by-step:
-
-```
-STEP 1: Frontend sends request
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-POST http://localhost:3000/api/v1/auth/signup
-Content-Type: application/json
-
-{
-  "email": "alice@example.com",
-  "password": "SecurePassword123",
-  "acceptTerms": true
-}
-
-
-STEP 2: BFF receives request
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. BFF main.ts received request on port 3000
-2. CORS middleware allows it (origin check)
-3. Routes to AuthModule because path is /auth/*
-
-
-STEP 3: BFF Auth Controller
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Validates request format (SignupDto)
-2. No JWT needed (signup is public)
-3. Forwards to Auth Service at localhost:3001
-
-
-STEP 4: Auth Service receives request
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Auth main.ts received request on port 3001
-2. Routes to auth.controller.ts
-3. auth.controller calls auth.service.signup()
-
-
-STEP 5: AuthService.signup() executes
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Receives: { email, password }
-2. Checks: email not already in use
-   → Query: SELECT * FROM users WHERE email = 'alice@example.com'
-   → PrismaService executes in auth_db schema
-   → Database returns: no user found ✅
-   
-3. Hashes password using Argon2id
-   Input: "SecurePassword123"
-   Output: "$argon2id$v=19$m=65536,t=3,p=4$..." (impossible to reverse)
-   
-4. Creates user in transaction (all-or-nothing):
-   INSERT INTO users (email, role, status, kycStatus, createdAt)
-   VALUES ('alice@example.com', 'user', 'active', 'not_started', now())
-   
-5. Creates auth credential record:
-   INSERT INTO auth_credentials (userId, passwordHash)
-   VALUES ('user-uuid', 'hashed-password')
-   
-6. Creates user profile:
-   INSERT INTO user_profiles (userId, ...)
-   
-7. JwtService.generateToken(userId)
-   → Creates JWT with payload: { sub: userId, email, exp: +30min }
-   → Signs with SECRET_KEY from SecretsService
-   → Returns: "eyJhbGciOi..."
-   
-8. SessionService.createSession(userId)
-   → Stores in Redis: session-key → userId (expires in 7 days)
-   → Returns session token
-   
-9. Returns response:
-   {
-     "accessToken": "eyJhbGciOi...",
-     "refreshToken": "refresh-token-here",
-     "user": {
-       "id": "user-uuid",
-       "email": "alice@example.com",
-       "role": "user"
-     }
-   }
-
-
-STEP 6: BFF forwards response
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Response passes through interceptors and returns to frontend
-
-
-STEP 7: Frontend receives response
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. React component receives tokens
-2. Stores accessToken in localStorage/sessionStorage
-3. Stores refreshToken securely
-4. Redirects to dashboard
-```
-
-### **Example: Login Request**
-
-```
-Frontend
-  ↓ POST /api/v1/auth/login
-  ↓ { email: "alice@example.com", password: "SecurePassword123" }
-  ↓
-BFF (routes to Auth Service)
-  ↓
-Auth Service
-  ↓ PrismaService queries: SELECT * FROM users WHERE email = 'alice@...'
-  ↓ Finds user with ID "user-uuid"
-  ↓ Gets auth_credential record with passwordHash
-  ↓ Uses Argon2 to verify: hash(submitted_password) == stored_hash
-  ↓ If doesn't match → throw UnauthorizedException
-  ↓ If matches ✅ → generate JWT token
-  ↓ Returns: { accessToken, refreshToken }
-  ↓
-Frontend stores tokens and uses them for authenticated requests
-```
-
-### **Example: Authenticated Request (Get Blogs)**
-
-```
-Frontend (has JWT from login)
-  ↓ GET /api/v1/admin/blogs
-  ↓ Header: "Authorization: Bearer eyJhbGciOi..."
-  ↓
-BFF (receives request)
-  ↓ JwtAuthGuard.canActivate() executes
-  ↓ Extracts token from header
-  ↓ JwtService.validateToken(token)
-  ↓   - Verifies signature (hasn't been tampered)
-  ↓   - Checks expiration time
-  ↓   - Extracts user ID from payload
-  ↓ If valid ✅ → attaches userId to request object
-  ↓ Routes to AdminModule
-  ↓
-Admin Service (receives authenticated request with userId)
-  ↓ Blog controller receives request with user context
-  ↓ Calls blogService.getAllBlogs(userId)
-  ↓ PrismaService queries: SELECT * FROM blogs WHERE created_by = userId
-  ↓ Returns: [{ id, title, content, createdAt }, ...]
-  ↓
-Returns blog list to Frontend
-```
-
----
-
-## 🚀 Setting Up & Running Locally
-
-### **1. Prerequisites Check**
-
-```bash
-# Check you have Node.js
-node --version
-# Should show: v20.x.x or higher
-
-# Check you have npm
-npm --version
-# Should show: 10.x.x or higher
-
-# Check you have Docker
-docker --version
-# Should show: Docker version...
-```
-
-### **2. Start Infrastructure**
-
-```bash
-# From root (escrowly-backend/)
-npm run docker:up
-
-# Wait 30 seconds for services to start
-# PostgreSQL: localhost:5433
-# Redis: localhost:6379
-# Redpanda: localhost:9092
-# PgAdmin: http://localhost:5050
-```
-
-### **3. Setup Auth Service**
-
-```bash
-cd services/auth
-
-# Install dependencies
-npm install
-
-# Copy environment variables
-cp .env.example .env
-
-# Generate Prisma client (connects to database)
-npm run prisma:generate
-
-# Run database migrations (creates tables)
-npm run prisma:migrate:dev
-
-# Start the service
-npm run start:dev
-# Running on: http://localhost:3001
-```
-
-### **4. Setup Admin Service (Optional)**
-
-```bash
-cd services/admin
-
-npm install
-cp .env.example .env
-npm run prisma:generate
-npm run prisma:migrate:dev
-npm run start:dev
-# Running on: http://localhost:3002
-```
-
-### **5. Start BFF Gateway (Optional)**
-
-```bash
-cd services/bff
-
-npm install
-cp .env.example .env
-npm run start:dev
-# Running on: http://localhost:3000
-```
-
-### **6. Test Your Setup**
-
-```bash
-# Test Auth Service
-curl http://localhost:3001/api/v1/health
-# Should return: { "status": "ok" }
-
-# Test Admin Service
-curl http://localhost:3002/api/v1/health
-# Should return: { "status": "ok" }
-
-# Test BFF
-curl http://localhost:3000/api/v1/health
-# Should return: { "status": "ok" }
-
-# Test signup (no auth needed)
-curl -X POST http://localhost:3000/api/v1/auth/signup \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "TestPassword123",
-    "acceptTerms": true
-  }'
-```
-
-### **7. Access Swagger Documentation**
-
-```
-Auth Service: http://localhost:3001/api/docs
-Admin Service: http://localhost:3002/api/docs
-BFF: http://localhost:3000/api/docs
-```
-
-### **8. Stop All Services**
-
-```bash
-npm run docker:down
-```
-
----
-
-## 🎯 Key Concepts Summary
-
-| Concept | Explanation | Simple Analogy |
-|---------|-------------|---|
-| **Microservices** | Each service handles one job | A restaurant has kitchen, waitstaff, cashier |
-| **JWT Token** | Proof of identity | Passport or ID card |
-| **Database Schema** | Isolated tables within one database | Separate filing cabinets in one office |
-| **BFF Gateway** | Routes requests to right service | Office receptionist directing visitors |
-| **Prisma ORM** | Code to talk to database | Instead of writing SQL, use JavaScript |
-| **NestJS** | Framework for building services | Structure and best practices for apps |
-| **Redis** | Fast cache/memory storage | Sticky notes on your desk (vs files in cabinet) |
-| **Argon2 Hashing** | One-way password encryption | You can make a smoothie but can't unblend it |
-| **Secrets Manager** | Secure storage for passwords/keys | Safe deposit box for valuables |
-| **CORS** | Allow frontend to talk to backend | Permission slip to access the building |
-
----
-
-## 📚 Important Files at a Glance
-
-```
-Must understand these first:
-1. docker-compose.yml       - What services run locally
-2. package.json             - Root workspace setup
-3. services/*/src/main.ts   - How each service starts
-
-Most important logic:
-4. services/auth/src/auth/auth.service.ts - Login/signup logic
-5. services/auth/src/auth/jwt.service.ts  - Token creation
-6. services/auth/prisma/schema.prisma     - Database structure
-
-API Gateway:
-7. services/bff/src/app.module.ts         - Request routing
-
-Shared code:
-8. packages/shared-config/src/secrets.service.ts - Secret access
-```
-
----
-
-## 🔗 Next Steps
-
-1. **Run locally** - Follow "Setting Up & Running Locally" section
-2. **Test endpoints** - Use Swagger docs at `/api/docs`
-3. **Read code** - Pick one feature (auth, blogs) and trace the code
-4. **Modify and test** - Change something, test it works
-5. **Add features** - Use existing patterns to build new features
-
----
-
-**Congratulations!** 🎉 You now understand the Escrowly backend system!
-
-The key insight: Escrowly is a **secure, scalable system** for handling money/crypto safely using **proven patterns** (microservices, JWT, database schemas). Every part has a clear purpose and works together seamlessly.
-
+<p align="center">
+  <i>Engineered with NestJS · Kafka · PostgreSQL · Prisma · Redis · Docker — designed for correctness, auditability, and scale.</i>
+</p>
