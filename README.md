@@ -16,12 +16,19 @@
 <p align="left">
   <a href="https://escrowly.com/"><img alt="Live" src="https://img.shields.io/badge/🌐_Live-escrowly.com-2563EB?style=for-the-badge"></a>
 </p>
+<img width="1825" height="946" alt="escrolwy-admin1" src="https://github.com/user-attachments/assets/8ca9db86-2b40-4d46-8a05-1d7936326c01" />
 
 > 🌐 **Live platform:** [escrowly.com](https://escrowly.com/)
 
 ### 🖥️ Powering the platform
 
-![Escrowly platform](../images/escrolwy-userdashbord.png)
+<img width="1825" height="946" alt="escrolwy-admin1" src="https://github.com/user-attachments/assets/97d13f3e-4743-4db4-89c4-3f130bcb3974" />
+
+
+<img width="1825" height="946" alt="escrolwy-userdashbord" src="https://github.com/user-attachments/assets/fcd86a41-a320-476f-ac90-3620db02536b" />
+
+<img width="1825" height="946" alt="escrolwy-userdashbord1" src="https://github.com/user-attachments/assets/7d7a79e6-b1f4-4ba2-aa37-4ce80f0913c9" />
+
 
 *The public-facing Escrowly experience — every escrow, wallet, payout and KYC check shown here is driven by the microservices in this repository.*
 
